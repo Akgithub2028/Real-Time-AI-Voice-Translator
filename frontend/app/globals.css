@@ -1,0 +1,108 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #0a0e1a;
+  --surface: rgba(255, 255, 255, 0.04);
+  --surface-solid: #121a2e;
+  --surface-border: rgba(232, 236, 244, 0.10);
+  --text: #e8ecf4;
+  --text-muted: #8390ac;
+  --amber: #f2a65a;
+  --amber-dim: rgba(242, 166, 90, 0.35);
+  --teal: #4fd1c5;
+  --teal-dim: rgba(79, 209, 197, 0.35);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  position: relative;
+  overflow-x: hidden;
+}
+
+/* Ambient glow blobs - fixed, behind all content, very low opacity so
+   they read as atmosphere rather than decoration competing for attention. */
+body::before,
+body::after {
+  content: "";
+  position: fixed;
+  border-radius: 50%;
+  filter: blur(120px);
+  z-index: -1;
+  pointer-events: none;
+}
+
+body::before {
+  width: 500px;
+  height: 500px;
+  background: var(--amber);
+  opacity: 0.10;
+  top: -120px;
+  left: -100px;
+}
+
+body::after {
+  width: 500px;
+  height: 500px;
+  background: var(--teal);
+  opacity: 0.10;
+  bottom: -120px;
+  right: -100px;
+}
+
+.font-display {
+  font-family: ui-serif, Georgia, "Times New Roman", serif;
+}
+
+.font-mono-caption {
+  font-family: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
+}
+
+.glass-card {
+  background: var(--surface);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--surface-border);
+}
+
+@keyframes pulse-ring {
+  0% { box-shadow: 0 0 0 0 var(--amber-dim); }
+  70% { box-shadow: 0 0 0 28px rgba(242, 166, 90, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(242, 166, 90, 0); }
+}
+
+.mic-active {
+  animation: pulse-ring 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.caption-enter {
+  animation: fade-in-up 0.4s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mic-active,
+  .caption-enter {
+    animation: none;
+  }
+}
