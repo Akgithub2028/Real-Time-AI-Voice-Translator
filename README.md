@@ -1,11 +1,11 @@
-# Real-Time AI Voice Translator
+# 🎙️ Real-Time AI Voice Translator
 
 Speak into your mic, hear it translated live in another language — with
 live captions showing both the original and translated text.
 
 **Pipeline:** Browser mic → WebSocket → VAD (silence detection) → Groq Whisper (STT) → Groq Llama (MT) → ElevenLabs (TTS) → Browser speaker
 
-## Features
+## ✨ Features
 
 - Real-time speech translation across 8 languages (English, Hindi, Tamil, Telugu, Spanish, French, German, Japanese)
 - Speech-triggered chunking (VAD) — cuts on natural pauses, not arbitrary timers
@@ -13,7 +13,7 @@ live captions showing both the original and translated text.
 - Custom dark-glass UI with a live waveform visualizer that reacts to your voice
 - Fully self-hosted pipeline — no black-box translation API, every stage is independently swappable
 
-## Architecture
+## 🏗️ Architecture
 
 ```mermaid
 flowchart TD
@@ -48,7 +48,7 @@ chunks to Whisper, which hallucinated filler text instead of returning
 empty. VAD (Voice Activity Detection) buffers speech until a natural pause
 is detected — a far better sentence boundary than an arbitrary clock.
 
-## Tech Stack
+## 🧰 Tech Stack
 
 | Stage | Technology | Why |
 |---|---|---|
@@ -59,7 +59,7 @@ is detected — a far better sentence boundary than an arbitrary clock.
 | Backend | FastAPI + WebSocket | Native async WebSocket support, unlike serverless platforms |
 | Frontend | Next.js 14 + Web Audio API | AudioWorklet for mic capture, no WebRTC/STUN/TURN needed (not peer-to-peer) |
 
-## Local Setup
+## ⚙️ Local Setup
 
 ### Backend
 
@@ -72,6 +72,7 @@ cp .env.example .env
 ```
 
 Edit `.env` and add your keys:
+
 GROQ_API_KEY=your_groq_key          # console.groq.com - free
 ELEVENLABS_API_KEY=your_11labs_key  # elevenlabs.io - free tier
 
@@ -105,7 +106,7 @@ npm run dev
 
 Open `http://localhost:3000`, allow mic permission, pick a target language, tap "Start Speaking".
 
-## Deployment
+## 🚀 Deployment
 
 ### Backend → Railway
 
@@ -138,7 +139,7 @@ for easy local dev. Before production, restrict it:
 allow_origins=["https://your-frontend.vercel.app"]
 ```
 
-## Tuning Knobs (`config.py`)
+## 🎛️ Tuning Knobs (`config.py`)
 
 | Constant | Default | What it controls |
 |---|---|---|
@@ -149,14 +150,14 @@ allow_origins=["https://your-frontend.vercel.app"]
 | `TTS_VOICE_ID` | your added voice | Swap for a different ElevenLabs voice (must be in your account — see setup above). |
 | `LANGUAGES` | 8 languages | Add/remove target languages shown in the UI dropdown. |
 
-## Known Limitations
+## ⚠️ Known Limitations
 
 - ElevenLabs free tier caps at ~10k characters/month — fine for demos/portfolio, not sustained heavy use.
 - No reconnection logic on WebSocket drop — refresh the page to restart a session.
 - Whisper occasionally hallucinates common phrases (e.g. "Thank you.") on very quiet audio even with VAD active. A known-phrase filter (`_WHISPER_HALLUCINATIONS` in `pipeline.py`) catches the most common ones, but it's not exhaustive.
 - VAD threshold (`VAD_SILENCE_THRESHOLD`) is mic/room dependent — may need retuning on a different device or noisy environment.
 
-## Troubleshooting
+## 🛠️ Troubleshooting
 
 **`ModuleNotFoundError` after `pip install` on Windows, or install fails
 partway through:** Windows has a default 260-character path length limit.
