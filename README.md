@@ -17,56 +17,40 @@ live captions showing both the original and translated text.
 
 ---
 
-## 🏗️ Architecture & System Overview
+## 🏗️ Architecture
 
 ```mermaid
-flowchart LR
-    subgraph Client["🖥️ CLIENT — Next.js (Vercel)"]
-        direction TB
-        Mic["🎤 Microphone"]
-        Worklet["AudioWorklet<br/>float32 → int16 PCM"]
-        Speaker["🔊 Speaker"]
-        UI["Live Caption UI<br/>+ Waveform Visualizer"]
-
-        Mic --> Worklet
+flowchart TD
+    subgraph Browser["Browser (Next.js)"]
+        A[Mic Input] --> B["AudioWorklet(float32 → int16 PCM)"]
+        B -->|WebSocket, raw PCM 48kHz| C
+        H[Speaker] 
     end
 
-    subgraph Network["🌐 WebSocket — wss://"]
-        direction TB
-        WS1["Binary: raw PCM 48kHz"]
-        WS2["Binary: translated PCM 48kHz"]
-        WS3["Text: transcript JSON"]
+    subgraph Backend["Backend (FastAPI)"]
+        C["VAD(20ms frame energy check)"] -->|speech buffered until pause| D["Groq Whisper(Speech-to-Text)"]
+        D -->|hallucination filter| E["Groq Llama-3.3-70B(Translation)"]
+        E --> F["ElevenLabs(Text-to-Speech, streaming)"]
+        F -->|24kHz PCM| G["Upsample24kHz → 48kHz"]
     end
 
-    subgraph Server["⚙️ SERVER — FastAPI (Render)"]
-        direction TB
-        VAD["VAD Buffer<br/>20ms frames, RMS energy"]
-        STT["Groq Whisper<br/>whisper-large-v3-turbo"]
-        Filter["Hallucination Filter"]
-        MT["Groq Llama<br/>llama-3.3-70b-versatile"]
-        TTS["ElevenLabs TTS<br/>streaming, pcm_24000"]
-        Upsample["Upsample<br/>24kHz → 48kHz"]
+    G -->|WebSocket, binary| H
+    D -.->|transcript JSON| I["Live Captions(source + translated)"]
+    E -.->|transcript JSON| I
 
-        VAD -->|"speech flushed<br/>on 600ms pause"| STT
-        STT --> Filter
-        Filter -->|"clean text"| MT
-        MT -->|"translated text"| TTS
-        TTS --> Upsample
-    end
-
-    Worklet ==>|WS1| VAD
-    Upsample ==>|WS2| Speaker
-    Filter -.->|WS3| UI
-    MT -.->|WS3| UI
-
-    classDef client fill:#0a0e1a,stroke:#4fd1c5,stroke-width:2px,color:#e8ecf4
-    classDef server fill:#121a2e,stroke:#f2a65a,stroke-width:2px,color:#e8ecf4
-    classDef network fill:#1a1030,stroke:#a78bfa,stroke-width:1px,color:#e8ecf4,stroke-dasharray: 4 3
-
-    class Mic,Worklet,Speaker,UI client
-    class VAD,STT,Filter,MT,TTS,Upsample server
-    class WS1,WS2,WS3 network
+    style Browser fill:#0a0e1a,stroke:#4fd1c5,color:#e8ecf4
+    style Backend fill:#121a2e,stroke:#f2a65a,color:#e8ecf4
 ```
+
+**Why this over a single black-box API (e.g. Gemini Live):** each stage
+(STT / MT / TTS) is independently debuggable and swappable, and it matches
+an existing Groq-based tech stack for a consistent story across projects.
+
+**Why VAD instead of a fixed timer:** an earlier version buffered audio in
+fixed 3-second windows. That cut sentences mid-word and sent pure-silence
+chunks to Whisper, which hallucinated filler text instead of returning
+empty. VAD (Voice Activity Detection) buffers speech until a natural pause
+is detected — a far better sentence boundary than an arbitrary clock.
 
 ### How a single utterance flows through the system
 
