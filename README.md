@@ -3,7 +3,7 @@
 Speak into your mic, hear it translated live in another language — with
 live captions showing both the original and translated text.
 
-**Live demo:** Backend → `https://Real-Time-AI-Voice-Translator.onrender.com` · Frontend → *(add your Vercel URL here)*
+**Pipeline:** Browser mic → WebSocket → VAD (silence detection) → Groq Whisper (STT) → Groq Llama (MT) → ElevenLabs (TTS) → Browser speaker
 
 ---
 
