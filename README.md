@@ -276,7 +276,6 @@ Render free web instances spin down after 15 minutes of inactivity. The first wa
 ### **Aayaann Kausar**
 
 [![GitHub](https://img.shields.io/badge/GitHub-Akgithub2028-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/Akgithub2028)
-[![Email](https://img.shields.io/badge/Email-aayaannkausar%40gmail.com-EA4335?style=for-the-badge&logo=gmail&logoColor=white)](mailto:aayaannkausar@gmail.com)
 [![Repository](https://img.shields.io/badge/Repository-Real--Time--AI--Voice--Translator-0284C7?style=for-the-badge&logo=git&logoColor=white)](https://github.com/Akgithub2028/Real-Time-AI-Voice-Translator)
 
 </div>
