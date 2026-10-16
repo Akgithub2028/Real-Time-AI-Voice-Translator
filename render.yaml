@@ -6,11 +6,13 @@ services:
     region: singapore
     rootDir: backend
     buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn src.main:app --host 0.0.0.0 --port $PORT --workers 1 --ws-max-size 16384 --ws-max-queue 16
+    startCommand: uvicorn src.main:app --host 0.0.0.0 --port $PORT --workers 1 --ws-max-size 16384 --ws-max-queue 16 --proxy-headers --forwarded-allow-ips '*'
     healthCheckPath: /health
     envVars:
       - key: PYTHON_VERSION
         value: 3.12.12
+      - key: TTS_MODEL
+        value: eleven_flash_v2_5
       - key: GROQ_API_KEY
         sync: false
       - key: ELEVENLABS_API_KEY

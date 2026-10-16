@@ -26,7 +26,7 @@ def synthesize_stream(text: str) -> Iterator[bytes]:
     if not text.strip():
         return
 
-    audio_stream = _client().text_to_speech.convert(
+    audio_stream = _client().text_to_speech.stream(
         voice_id=TTS_VOICE_ID,
         model_id=TTS_MODEL,
         text=text,
@@ -41,7 +41,7 @@ def synthesize_stream(text: str) -> Iterator[bytes]:
                 yield pending[:aligned]
                 pending = pending[aligned:]
         if pending:
-            raise ValueError('Incomplete audio sample from synthesis provider')
+            raise RuntimeError('Incomplete audio sample from synthesis provider')
     finally:
         close = getattr(audio_stream, 'close', None)
         if close:

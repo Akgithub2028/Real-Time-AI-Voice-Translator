@@ -13,6 +13,7 @@ an arbitrary timer.
 
 from collections.abc import Iterator
 from threading import Event
+import time
 
 from src.config import (
     MIC_RATE,
@@ -48,10 +49,14 @@ _WHISPER_HALLUCINATIONS = {
 class TranslationPipeline:
     """Buffers mic audio using VAD, runs a translation cycle per detected utterance."""
 
-    def __init__(self, target_language_name: str) -> None:
+    def __init__(self, target_language_name: str, source_language_name: str | None = None) -> None:
         if target_language_name not in LANGUAGES:
             raise ValueError(f"Unknown target language: {target_language_name}")
         self._target_lang = target_language_name
+        if source_language_name is not None and source_language_name not in LANGUAGES:
+            raise ValueError('Unknown source language')
+        self.source_language = source_language_name
+        self.last_speech_at = None
 
         self._raw_buffer = bytearray()      # unprocessed audio, not yet frame-aligned
         self._speech_buffer = bytearray()   # accumulated speech waiting to be flushed
@@ -80,6 +85,7 @@ class TranslationPipeline:
 
     def _process_frame(self, frame: bytes) -> Iterator[dict]:
         if is_speech(frame):
+            self.last_speech_at = time.perf_counter()
             self._speech_buffer.extend(frame)
             self._speech_bytes += len(frame)
             self._in_speech = True
@@ -131,9 +137,13 @@ class TranslationPipeline:
             return
         self.reserve_request()
         yield {'type': 'status', 'stage': 'transcribing'}
-        source_text = transcribe_chunk(pcm_48k)
         if self.cancelled.is_set():
             return
+        started = time.perf_counter()
+        source_text = transcribe_chunk(pcm_48k, **({'language': LANGUAGES[self.source_language]} if self.source_language else {}))
+        if self.cancelled.is_set():
+            return
+        yield {'type': 'timing', 'stage': 'stt', 'duration_ms': round((time.perf_counter()-started)*1000, 2)}
         if not source_text or source_text.strip(" .") == "":
             return  # empty or Whisper's silence-hallucination artifact
 
@@ -144,9 +154,13 @@ class TranslationPipeline:
             return
 
         yield {'type': 'status', 'stage': 'translating'}
+        if self.cancelled.is_set():
+            return
+        started = time.perf_counter()
         translated_text = translate(source_text, self._target_lang)
         if self.cancelled.is_set():
             return
+        yield {'type': 'timing', 'stage': 'translation', 'duration_ms': round((time.perf_counter()-started)*1000, 2)}
         if not translated_text:
             return
 
@@ -156,10 +170,21 @@ class TranslationPipeline:
             "translated_text": translated_text,
         }
 
+        if self.cancelled.is_set():
+            return
         self.reserve_characters(len(translated_text))
+        if self.cancelled.is_set():
+            return
         yield {'type': 'status', 'stage': 'speaking'}
+        if self.cancelled.is_set():
+            return
+        started = time.perf_counter()
+        first = True
         for tts_chunk_24k in synthesize_stream(translated_text):
             if self.cancelled.is_set():
                 return
+            if first:
+                first = False
+                yield {'type': 'timing', 'stage': 'tts_first_byte', 'duration_ms': round((time.perf_counter()-started)*1000, 2)}
             audio_48k = upsample_24k_to_48k(tts_chunk_24k)
             yield {"type": "audio", "data": audio_48k}

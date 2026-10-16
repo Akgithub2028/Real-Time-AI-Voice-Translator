@@ -3,7 +3,7 @@ from collections import deque, OrderedDict
 from datetime import datetime, timezone
 from threading import Lock
 import time
-from src.config import MAX_SESSIONS, REQUESTS_PER_MINUTE, DAILY_CHARACTERS
+from src.config import MAX_SESSIONS, REQUESTS_PER_MINUTE, DAILY_CHARACTERS, SESSION_SECONDS, SESSION_CHARACTERS
 
 
 class DemoLimit(Exception):
@@ -56,3 +56,13 @@ class DemoLimits:
             if self.characters + count > DAILY_CHARACTERS:
                 raise DemoLimit('Today’s demo voice allowance is used up. Please return tomorrow.')
             self.characters += count
+
+    def snapshot(self):
+        with self._lock:
+            today = datetime.now(timezone.utc).date().isoformat()
+            return {'active_sessions': self.active, 'max_sessions': MAX_SESSIONS,
+                    'requests_last_minute': sum(t > time.monotonic()-60 for t in self.requests),
+                    'requests_per_minute_limit': REQUESTS_PER_MINUTE,
+                    'daily_characters_used': self.characters if self.day == today else 0,
+                    'daily_character_limit': DAILY_CHARACTERS,
+                    'session_seconds': SESSION_SECONDS, 'session_characters': SESSION_CHARACTERS}

@@ -48,7 +48,7 @@ def _pcm_to_wav_bytes(pcm_bytes: bytes, sample_rate: int) -> bytes:
     return buf.read()
 
 
-def transcribe_chunk(pcm_48k: bytes) -> str:
+def transcribe_chunk(pcm_48k: bytes, language: str | None = None) -> str:
     """Transcribe one buffered chunk of mic audio.
 
     Returns empty string on silence/no-speech chunks rather than raising -
@@ -61,6 +61,7 @@ def transcribe_chunk(pcm_48k: bytes) -> str:
         file=("chunk.wav", wav_bytes),
         model=STT_MODEL,
         response_format="text",
+        **({'language': language} if language else {}),
     )
     text = response.strip() if isinstance(response, str) else str(response).strip()
     return text

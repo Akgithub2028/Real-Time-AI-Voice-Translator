@@ -21,7 +21,7 @@ STT_MODEL: str = "whisper-large-v3-turbo"
 # Owner-approved free fallback: Llama 3.3 is no longer accessible on this account.
 MT_MODEL: str = os.getenv('MT_MODEL', 'openai/gpt-oss-20b')
 # ElevenLabs default multilingual voice model - handles all target languages in LANGUAGES dict.
-TTS_MODEL: str = "eleven_multilingual_v2"
+TTS_MODEL: str = os.getenv('TTS_MODEL', 'eleven_flash_v2_5')
 TTS_VOICE_ID: str = os.getenv("TTS_VOICE_ID", "")
 
 ALLOWED_ORIGINS = [s.strip().rstrip('/') for s in os.getenv(
