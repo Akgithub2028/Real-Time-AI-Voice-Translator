@@ -20,7 +20,7 @@
 
 ### [▶ Try the live translator](https://real-time-ai-voice-translator.vercel.app) &nbsp; · &nbsp; [▶ Open the live dashboard](https://real-time-ai-voice-translator.vercel.app/status)
 
-**Vercel Hobby · Render Free · Groq Free · ElevenLabs Free**
+**Vercel · Render Free · Groq Free · ElevenLabs Free**
 
 <p align="center">
   <a href="#-key-features">Features</a> •
