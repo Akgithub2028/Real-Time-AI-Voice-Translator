@@ -2,272 +2,267 @@
 
 # 🎙️ Real-Time AI Voice Translator
 
-### High-Performance, Bidirectional Voice Translation Pipeline with Live Bilingual Captions
+### Two-way voice translation with streaming audio, bilingual captions, and live system metrics
 
 <p align="center">
-  <b>Speak naturally into your microphone — listen to instantaneous synthesized speech in your target language while live captions stream side-by-side.</b>
+  <b>Speak, pause, and hear your words in another language.</b><br/>
+  A working portfolio demo built with Next.js, FastAPI, Groq, and ElevenLabs.
 </p>
 
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.111-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
-[![Next.js](https://img.shields.io/badge/Next.js-14%2B-000000?style=for-the-badge&logo=next.js&logoColor=white)](https://nextjs.org)
-[![Groq](https://img.shields.io/badge/Groq-LPU_Inference-F55036?style=for-the-badge&logo=groq&logoColor=white)](https://groq.com)
-[![Whisper](https://img.shields.io/badge/Whisper-Large_v3_Turbo-2563EB?style=for-the-badge&logo=openai&logoColor=white)](https://github.com/openai/whisper)
-[![ElevenLabs](https://img.shields.io/badge/ElevenLabs-Streaming_TTS-6366F1?style=for-the-badge&logo=elevenlabs&logoColor=white)](https://elevenlabs.io)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.143-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
+[![Next.js](https://img.shields.io/badge/Next.js-16.4-000000?style=for-the-badge&logo=next.js&logoColor=white)](https://nextjs.org)
+[![Groq](https://img.shields.io/badge/Groq-Whisper_%2B_GPT--OSS-F55036?style=for-the-badge)](https://groq.com)
+[![ElevenLabs](https://img.shields.io/badge/ElevenLabs-Flash_Streaming-6366F1?style=for-the-badge)](https://elevenlabs.io)
 [![License: MIT](https://img.shields.io/badge/License-MIT-22C55E?style=for-the-badge)](LICENSE)
 
 <br/>
 
+### [▶ Try the live translator](https://real-time-ai-voice-translator.vercel.app) &nbsp; · &nbsp; [▶ Open the live dashboard](https://real-time-ai-voice-translator.vercel.app/status)
+
+**Vercel Hobby · Render Free · Groq Free · ElevenLabs Free**
+
 <p align="center">
-  <a href="#-architecture"><b>Architecture</b></a> •
-  <a href="#-key-features"><b>Key Features</b></a> •
-  <a href="#-how-it-works"><b>How It Works</b></a> •
-  <a href="#-tech-stack"><b>Tech Stack</b></a> •
-  <a href="#-local-setup"><b>Local Setup</b></a> •
-  <a href="#-deployment"><b>Deployment</b></a> •
-  <a href="#-tuning-knobs"><b>Tuning Knobs</b></a> •
-  <a href="#-author"><b>Author</b></a>
+  <a href="#-key-features">Features</a> •
+  <a href="#-architecture">Architecture</a> •
+  <a href="#-how-it-works">How It Works</a> •
+  <a href="#-local-setup">Local Setup</a> •
+  <a href="#-deployment">Deployment</a> •
+  <a href="#-verification">Verification</a> •
+  <a href="docs/README.md">Documentation</a>
 </p>
 
 </div>
 
 ---
 
-> [!TIP]
-> **Zero Black-Box Lock-in:** Unlike monolithic speech APIs (e.g. Gemini Live), this project implements a decoupled **STT ➔ MT ➔ TTS** pipeline connected via asynchronous WebSockets. Every single layer is independently observable, bench-testable, and swappable.
-
----
+> [!NOTE]
+> **Trying the demo:** choose both languages, click **Start speaking**, allow microphone access, and pause after a sentence. Use headphones. The free backend may take about a minute to wake up; the UI shows connection progress before requesting your microphone.
 
 ## ✨ Key Features
 
-* 🌐 **8 Supported Languages:** Seamlessly translate between English, Hindi, Tamil, Telugu, Spanish, French, German, and Japanese.
-* ⚡ **RMS Energy-Based VAD:** Intelligent Voice Activity Detection analyzes 20ms audio frames in real time, chunking audio precisely on natural speech pauses rather than crude fixed timers.
-* 🛡️ **Whisper Hallucination Shield:** Built-in sanitization filter prevents Whisper from generating ghost filler artifacts (`"."`, `"Thank you."`, `"Please subscribe"`) during silent or near-silent mic intervals.
-* 🔊 **Polyphase Anti-Aliased Resampling:** Audio is captured at native 48kHz in an `AudioWorklet`, polyphase downsampled to 16kHz for STT, synthesized at 24kHz PCM by ElevenLabs, and upsampled back to 48kHz for pristine, gapless Web Audio playback.
-* 🌊 **Reactive Dark-Glass UI:** Modern glassmorphism interface featuring a live 28-bar audio frequency visualizer, real-time status pulses, and a bilingual chat stream.
-* 💬 **Dual Bilingual Captions:** Displays source transcript and translated output side-by-side with minimal latency.
+- 🌐 **Seven languages:** English, Hindi, Tamil, Spanish, French, German, and Japanese, selectable as source and target.
+- 🔁 **Two-way conversation:** **Switch speaker** swaps the language direction on the same microphone and WebSocket connection. Earlier captions remain visible.
+- ⚡ **Controlled interruption:** **Interrupt & speak** stops scheduled playback immediately and starts a new turn in the current direction. Turn IDs reject stale captions/audio; a bounded microphone pre-roll preserves recent speech during the switch.
+- 🔊 **Streaming voice output:** ElevenLabs Flash v2.5 returns PCM through its streaming endpoint. Playback begins before the entire response finishes generating.
+- 💬 **Bilingual captions and replay:** source and translated text appear side by side. Copy captions or replay received audio without another API request.
+- 🎛️ **Light, responsive interface:** clear microphone controls, live input visualization, keyboard-accessible selectors, playback/status indicators, and actionable error states.
+- 📊 **Measured observability:** per-turn timings plus a live dashboard for stage latency, p50/p95, sample counts, capacity, outcomes, budgets, and provider observations.
+- 🛡️ **Free-demo safeguards:** bounded queues, finite provider timeouts, per-visitor start limits, request/character budgets, and reliable microphone/session cleanup.
 
----
+Translation is **utterance-based**: the system buffers speech until a pause or an eight-second boundary. Two-way interaction uses explicit speaker controls; automatic acoustic barge-in and simultaneous speaker separation are outside this version.
 
 ## 🏗️ Architecture
 
-The diagram below illustrates the end-to-end data lifecycle from browser capture to speech synthesis:
+The stages remain separate so transport, recognition, translation, synthesis, and playback can be measured independently.
 
 ```mermaid
-flowchart TD
-    subgraph Browser["Browser (Next.js)"]
-        A[Mic Input] --> B["AudioWorklet (float32 → int16 PCM)"]
-        B -->|WebSocket, raw PCM 48kHz| C
-        H[Speaker]
+flowchart LR
+    subgraph Browser["Browser · Next.js on Vercel Hobby"]
+        Mic["Microphone + AudioWorklet"]
+        UI["Captions + scheduled playback"]
+        Dashboard["Live status dashboard"]
     end
-
-    subgraph Backend["Backend (FastAPI)"]
-        C["VAD (20ms frame energy check)"] -->|speech buffered until pause| D["Groq Whisper (Speech-to-Text)"]
-        D -->|hallucination filter| E["Groq Llama-3.3-70B (Translation)"]
-        E --> F["ElevenLabs (Text-to-Speech, streaming)"]
-        F -->|24kHz PCM| G["Upsample 24kHz → 48kHz"]
+    subgraph Server["FastAPI · Render Free"]
+        WS["WebSocket + turn IDs"]
+        VAD["VAD + bounded utterance queue"]
+        PCM["24 → 48 kHz PCM"]
+        Metrics["Health + aggregate metrics"]
     end
-
-    G -->|WebSocket, binary| H
-    D -.->|transcript JSON| I["Live Captions (source + translated)"]
-    E -.->|transcript JSON| I
-
-    style Browser fill:#0a0e1a,stroke:#4fd1c5,color:#e8ecf4
-    style Backend fill:#121a2e,stroke:#f2a65a,color:#e8ecf4
+    Mic -->|"48 kHz PCM over WSS"| WS
+    WS --> VAD
+    VAD -->|"16 kHz WAV"| STT["Groq Whisper STT"]
+    STT --> MT["Groq GPT-OSS translation"]
+    MT --> TTS["ElevenLabs Flash streaming"]
+    MT -.->|"Bilingual captions"| WS
+    TTS --> PCM
+    PCM --> WS
+    WS -->|"Tagged audio + JSON"| UI
+    VAD -.-> Metrics
+    Dashboard -->|"Visible-page HTTP checks"| Metrics
 ```
 
----
+See [system design and WebSocket protocol](docs/ARCHITECTURE.md) for turn switching, cancellation, audio formats, and measurement boundaries.
 
 ## 🔬 How It Works
 
-### The End-to-End Pipeline (Step-by-Step)
+1. **Capture:** an `AudioWorklet` converts 48 kHz mono microphone samples into 20 ms signed 16-bit PCM frames. The frontend adds a turn ID and browser speech timestamp before sending each packet.
+2. **Detect a turn:** the backend checks frame RMS energy. It buffers speech until roughly 600 ms of silence, with a minimum speech duration and an eight-second safety boundary.
+3. **Recognize:** anti-aliased polyphase resampling converts the utterance to 16 kHz WAV in memory. Groq Whisper receives the selected source-language hint. Empty text and a small set of known silence/outro artifacts are filtered.
+4. **Translate:** Groq `openai/gpt-oss-20b` returns translation text using a strict translation-only prompt. Captions are sent before synthesis completes.
+5. **Synthesize and play:** ElevenLabs `eleven_flash_v2_5` streams 24 kHz PCM. The server repeats samples to produce 48 kHz PCM; the browser schedules the arriving chunks with Web Audio.
+6. **Change speakers:** an explicit control stops old playback, changes the turn epoch, and acknowledges the new direction. Old results are discarded. Already-issued provider work finishes within its timeout before the single session worker advances.
+7. **Measure:** server stage durations and browser scheduled-playback timing are reported separately. Structured logs and bounded in-memory metrics contain operational data without conversation content.
 
-```
-[Browser Mic] ➔ [AudioWorklet] ➔ [WebSocket] ➔ [VAD Detection] ➔ [Groq Whisper STT]
-                                                                        ↓
-[Browser Speaker] ← [WebSocket] ← [24k→48k Upsample] ← [ElevenLabs TTS] ← [Groq LLaMA MT]
-```
-
-1. **Audio Capture (`AudioWorklet`):** Browser captures microphone audio at 48kHz mono. A dedicated background audio thread converts raw `float32` samples to `int16` PCM frames without blocking UI renders.
-2. **Streaming Transport:** Raw PCM chunks are transmitted via WebSocket binary frames directly to the FastAPI server.
-3. **Voice Activity Detection (`vad.py`):** The server analyzes incoming audio in 20ms windows using Root-Mean-Square (RMS) energy. Once speech starts, audio accumulates in a buffer until a natural pause (~600ms) is detected.
-4. **Polyphase Downsampling (`stt.py`):** Buffered 48kHz PCM is downsampled to 16kHz using `scipy.signal.resample_poly` with anti-aliasing lowpass filtering, then packaged into an in-memory WAV container.
-5. **Speech-to-Text (`stt.py`):** Groq Whisper (`whisper-large-v3-turbo`) transcribes the speech with sub-second latency.
-6. **Hallucination Shield (`pipeline.py`):** Whisper silence artifacts (isolated punctuation, outro phrases like *"Thank you for watching"*) are caught and dropped before triggering downstream APIs.
-7. **Machine Translation (`mt.py`):** Groq LLaMA (`llama-3.3-70b-versatile`) translates the transcript into the requested target language with a zero-temperature, strict system prompt.
-8. **Streaming Text-to-Speech (`tts.py`):** ElevenLabs (`eleven_multilingual_v2`) synthesizes speech, streaming raw 24kHz PCM chunks as they are generated.
-9. **Playback Scheduling:** Backend upsamples audio 24kHz ➔ 48kHz via sample repetition and streams binary frames back to the client; Web Audio API schedules seamless, gapless playback alongside live bilingual caption updates.
-
----
+Normal microphone forwarding pauses during translated playback to reduce feedback. Capture remains available for an explicit interruption; headphones are recommended.
 
 ## 🧰 Tech Stack
 
-| Layer | Technology | Primary Role | Key Advantage |
-| :--- | :--- | :--- | :--- |
-| **STT** | Groq Whisper (`whisper-large-v3-turbo`) | Speech-to-Text | LPU inference provides ultra-low STT latency |
-| **MT** | Groq LLaMA (`llama-3.3-70b-versatile`) | Translation Engine | Full prompt control, high multilingual fidelity |
-| **TTS** | ElevenLabs (`eleven_multilingual_v2`) | Text-to-Speech | True streaming 24kHz PCM output; natural inflection |
-| **VAD** | Custom RMS Energy Detector | Speech Boundary Slicing | Lightweight, real-time, zero ML overhead |
-| **Backend** | FastAPI + WebSockets | Ingestion & Orchestration | Native asynchronous event loop for high concurrent throughput |
-| **Frontend** | Next.js 14 + Web Audio API | Client UI & Audio Capture | Off-main-thread processing via AudioWorklet |
-| **Styling** | Vanilla CSS + TailwindCSS | Dark-Glass Design | Tailored typography, smooth CSS transitions, dynamic waveform |
+| Layer | Technology | Role |
+| --- | --- | --- |
+| Frontend | Next.js 16.4.2, React 19, TypeScript | Responsive translator and monitoring routes |
+| Browser audio | AudioWorklet, Web Audio API | PCM capture, visualization, scheduled playback and replay |
+| Backend | Python 3.12, FastAPI, Uvicorn | Async WebSocket transport; provider work off the event loop |
+| Speech recognition | Groq `whisper-large-v3-turbo` | Utterance transcription with explicit language hints |
+| Translation | Groq `openai/gpt-oss-20b` | Translation-only text output |
+| Voice synthesis | ElevenLabs `eleven_flash_v2_5` | Streaming PCM with a verified built-in voice |
+| Audio processing | NumPy, SciPy, RMS VAD | Speech boundaries and anti-aliased STT resampling |
+| Observability | Process-local metrics, JSON event logs | Stage timings, outcomes, capacity and sanitized errors |
 
----
+The original Llama model was unavailable on the deployment account, so the deployed configuration uses the verified free GPT-OSS alternative. `MT_MODEL` and `TTS_MODEL` remain configurable; there is no automatic paid fallback.
 
 ## ⚙️ Local Setup
 
-### Prerequisites
+Use **Python 3.12**, **Node.js 20.9+** and npm. You need Groq and ElevenLabs API keys plus a voice accessible on your ElevenLabs Free account. Configure secrets locally or in Render, never in frontend code.
 
-* **Python 3.10+** (Python 3.12 recommended)
-* **Node.js 18+** & **npm**
-* [Groq Cloud API Key](https://console.groq.com) (Free tier available)
-* [ElevenLabs API Key](https://elevenlabs.io) (Free tier available)
+### 1. Start the backend
 
----
-
-### 1. Backend Setup
+From the repository root:
 
 ```bash
-# Navigate to the backend directory
 cd backend
-
-# Create and activate a virtual environment
 python -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
-
-# Install dependencies
+source .venv/bin/activate  # Windows PowerShell: .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-
-# Create your environment file from the template
 cp .env.example .env
 ```
 
-Populate `backend/.env`:
-```env
-GROQ_API_KEY=your_groq_api_key_here
-ELEVENLABS_API_KEY=your_elevenlabs_api_key_here
-TTS_VOICE_ID=3AMU7jXQuQa3oRvRqUmb
+Edit the ignored `backend/.env`:
+
+```dotenv
+GROQ_API_KEY=your_groq_api_key
+ELEVENLABS_API_KEY=your_elevenlabs_api_key
+TTS_VOICE_ID=your_compatible_free_voice_id
+MT_MODEL=openai/gpt-oss-20b
+TTS_MODEL=eleven_flash_v2_5
+ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
 ```
 
-> [!IMPORTANT]
-> **ElevenLabs Free Tier Voice Configuration:** Default library voices (like "Rachel") return `402 Payment Required` on free tier accounts.
-> 1. Visit [elevenlabs.io/app/voice-library](https://elevenlabs.io/app/voice-library).
-> 2. Click on any voice and select **"Add to my voices"** (free).
-> 3. Go to **My Voices**, copy the **Voice ID**, and paste it into `TTS_VOICE_ID` in your `.env`.
+The deployed demo uses the built-in **Sarah** voice, `EXAVITQu4vr4xnSDxMaL`. Verify access in your own account: some library voices require a paid plan, and adding one to a collection does not guarantee Free synthesis access.
 
-Start the FastAPI backend:
 ```bash
 uvicorn src.main:app --reload --port 8000
 ```
-Verify health: Navigate to `http://localhost:8000/health` (should return `{"status": "ok"}`).
 
----
+Check [local health](http://localhost:8000/health) and [local configuration readiness](http://localhost:8000/ready). Readiness verifies configuration presence, not upstream credit or availability.
 
-### 2. Frontend Setup
+### 2. Start the frontend
+
+In a second terminal, from the repository root:
 
 ```bash
-# Navigate to the frontend directory
 cd frontend
-
-# Install Node modules
-npm install
-
-# Create local environment config
+npm ci
 cp .env.local.example .env.local
-```
-
-Populate `frontend/.env.local`:
-```env
-NEXT_PUBLIC_WS_URL=ws://localhost:8000/ws/translate
-```
-
-Start the Next.js development server:
-```bash
 npm run dev
 ```
 
-Open `http://localhost:3000` in Chrome/Edge, grant microphone permission, choose your target language, and click **Tap to start speaking**!
+The example sets `NEXT_PUBLIC_WS_URL=ws://localhost:8000/ws/translate`. Open **http://localhost:3000**, choose both languages, and click **Start speaking**. A secure HTTPS origin or localhost is required for browser microphone access.
 
----
+More details: [frontend guide](frontend/README.md) · [backend guide](backend/README.md).
 
 ## 🚀 Deployment
 
-### Backend Deployment (Render / Railway)
+| Component | Free service | Public entry point |
+| --- | --- | --- |
+| Translator | Vercel Hobby | [▶ Launch translator](https://real-time-ai-voice-translator.vercel.app) |
+| Monitoring UI | Same Vercel project | [▶ View dashboard](https://real-time-ai-voice-translator.vercel.app/status) |
+| FastAPI backend | Render Free | [Health](https://voice-translator-backend-u725.onrender.com/health) · [Readiness](https://voice-translator-backend-u725.onrender.com/ready) · [Metrics](https://voice-translator-backend-u725.onrender.com/metrics) |
+| AI pipeline | Groq Free + ElevenLabs Free | Server-side credentials only |
 
-1. Connect your repository to **Render** or **Railway**.
-2. Set **Root Directory** to `backend`.
-3. Set **Build Command** to: `pip install -r requirements.txt`
-4. Set **Start Command** to: `uvicorn src.main:app --host 0.0.0.0 --port $PORT`
-5. Configure Environment Variables: `GROQ_API_KEY`, `ELEVENLABS_API_KEY`, `TTS_VOICE_ID`.
-6. Health check path: `/health`.
+Vercel builds the **`frontend`** directory with the Next.js preset. Render runs the **`backend`** directory as a Python web service. The persistent WebSocket backend runs on Render; Vercel serves the frontend and dashboard.
 
-> [!NOTE]
-> **Why not serverless (e.g. AWS Lambda / Vercel Serverless) for the backend?**
-> This application relies on persistent, bidirectional WebSocket sessions for raw binary audio streaming. Serverless functions have execution timeouts and are not structured for long-lived full-duplex socket connections.
+Production frontend configuration:
 
----
+```dotenv
+NEXT_PUBLIC_WS_URL=wss://voice-translator-backend-u725.onrender.com/ws/translate
+```
 
-### Frontend Deployment (Vercel)
+Keep AI credentials in Render's environment. Set exact allowed frontend origins, `/health` as the service health check, and one Uvicorn worker for the process-local safeguards. The full commands, environment variables, cold-start behavior, and recovery steps are in [deployment and operations](docs/DEPLOYMENT.md).
 
-1. Import your repository into **Vercel**.
-2. Set **Root Directory** to `frontend`.
-3. Add the production WebSocket environment variable:
-   ```env
-   NEXT_PUBLIC_WS_URL=wss://your-backend.onrender.com/ws/translate
-   ```
-   *(Ensure you use `wss://` instead of `ws://` to prevent browser mixed-content blocks over HTTPS).*
-4. Deploy.
+Free tiers have request, credit, build and bandwidth limits. No paid resources or overage extension were enabled for this demo. Hosting/provider account settings and included allowances still determine availability; this is a non-commercial portfolio demo with ElevenLabs attribution.
 
----
+## 📊 Observability & Latency
 
-## 🎛️ Tuning Knobs (`backend/src/config.py`)
+The [live dashboard](https://real-time-ai-voice-translator.vercel.app/status) shows:
 
-All core heuristics can be customized in `config.py` or overridden via environment variables:
+- Active sessions and available capacity; completed, failed, empty and interrupted work.
+- Successful outcome rate with its denominator stated explicitly.
+- Latest, median and p95 stage durations with sample counts.
+- Provider configuration versus actual success/error observations.
+- Process-local voice/request budgets, uptime, audio bytes and recent sanitized errors.
 
-| Setting | Default | Description |
-| :--- | :---: | :--- |
-| `VAD_SILENCE_THRESHOLD` | `700` | RMS amplitude below which audio is classified as silence. Lower for quiet mics; raise in noisy rooms. |
-| `VAD_SILENCE_DURATION_MS` | `600` | Duration of silence (ms) required to trigger a sentence boundary flush. |
-| `VAD_MAX_CHUNK_SECONDS` | `8.0` | Maximum speech buffer duration (s) before forcing a flush to avoid latency build-up. |
-| `VAD_MIN_CHUNK_SECONDS` | `0.3` | Minimum speech duration required to send to STT (filters out coughs and clicks). |
-| `TTS_VOICE_ID` | `3AMU7jXQuQa3oRvRqUmb` | ElevenLabs Voice ID for streaming synthesis. |
-| `LANGUAGES` | 8 languages | Target language options displayed in the frontend dropdown. |
+It refreshes every 15 seconds while visible, pauses when hidden, and labels stale or failed checks. Monitoring does not call AI providers. Counters reset when the backend process restarts; it is not a historical uptime SLA or provider billing dashboard.
 
----
+The final verified warm English→Hindi→English session measured **1.66 s / 1.68 s from speech end to scheduled browser playback**. These are two observations, not a latency guarantee; an earlier first-turn server observation was 3.49 s. See [verification results and measurement limits](docs/PRODUCTION_VERIFICATION.md).
+
+## ✅ Verification
+
+| Check | Recorded result |
+| --- | --- |
+| Backend unit/integration tests | 27 passed |
+| AudioWorklet framing/flush tests | 2 passed |
+| Browser regression scenarios | 9 passed on local and deployed frontend |
+| Lint, TypeScript, production build | Passed |
+| Automated desktop/mobile WCAG A/AA scan | Zero violations on translator and dashboard |
+| Production dependency audit | Zero reported vulnerabilities |
+| Real local/public API acceptance | English → Hindi → English, interruption, replay and microphone release |
+
+Results were recorded on **2026-10-16**. Test commands and coverage boundaries are documented in [testing and verification](docs/TESTING.md). Browser regressions mock providers; the separate live acceptance used real provider responses. Physical microphone coverage and subjective translation/voice quality require manual evaluation.
+
+## 🎛️ Tuning Knobs
+
+| Configuration | Default | Purpose |
+| --- | --- | --- |
+| `MT_MODEL` / `TTS_MODEL` | GPT-OSS 20B / Flash v2.5 | Environment-selected provider models |
+| `TTS_VOICE_ID` | Required | Free-compatible ElevenLabs voice |
+| `MAX_SESSIONS` | `2` | Concurrent session capacity |
+| `SESSION_SECONDS` / `SESSION_CHARACTERS` | `180` / `600` | Per-session time and voice-text budgets |
+| `REQUESTS_PER_MINUTE` / `DAILY_CHARACTERS` | `15` / `1000` | Process-wide demo budgets |
+| VAD threshold / silence duration | `700` / `600 ms` | Energy threshold and endpoint wait |
+| VAD maximum / minimum speech | `8 s` / `0.3 s` | Utterance bounds |
+
+Model and budget settings are environment variables. VAD constants and the seven-language menu are source settings in [`backend/src/config.py`](backend/src/config.py); they are not environment overrides. Keep the frontend language menu synchronized when changing supported languages.
 
 ## ⚠️ Known Limitations & Troubleshooting
 
 <details>
-<summary><b>1. Windows Long Path Installation Errors</b></summary>
-<br/>
-Windows path length limits (260 chars) can cause pip failures with packages like `elevenlabs`.
-<br/>
-<b>Solution:</b> Enable Windows Long Paths (`regedit` ➔ `HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\FileSystem` ➔ set `LongPathsEnabled = 1`), reboot, and re-create `.venv`.
+<summary><b>The first connection is slow</b></summary>
+
+Render Free sleeps after inactivity and can take about a minute to wake. The UI waits up to 90 seconds and shows a wake-up message. No artificial keep-alive service is configured. Check the dashboard or backend health before retrying.
+
 </details>
 
 <details>
-<summary><b>2. ElevenLabs 402 Payment Required Error</b></summary>
-<br/>
-Occurs when attempting to use default preset library voices on the free tier.
-<br/>
-<b>Solution:</b> Add a voice to your personal ElevenLabs voice library at <code>elevenlabs.io/app/voice-library</code> and set its ID in <code>TTS_VOICE_ID</code>.
+<summary><b>A model, voice or free quota is unavailable</b></summary>
+
+Provider HTTP 402/404 can indicate an unavailable model or voice; 429 indicates quota exhaustion. Verify account access and the configured model/voice instead of enabling a paid fallback. The UI reports sanitized errors; the dashboard records provider observations. Demo voice budgets count reserved text even if synthesis is interrupted or fails.
+
 </details>
 
 <details>
-<summary><b>3. Mixed Content / WebSocket Connection Blocked</b></summary>
-<br/>
-Browser blocks <code>ws://</code> connections when the frontend is served over <code>https://</code>.
-<br/>
-<b>Solution:</b> Ensure <code>NEXT_PUBLIC_WS_URL</code> starts with <code>wss://</code> on production deployments.
+<summary><b>Microphone or WebSocket access fails</b></summary>
+
+Allow microphone permission and use HTTPS or localhost. An HTTPS frontend requires `wss://` for its backend. Add the exact frontend origin to `ALLOWED_ORIGINS`; Vercel preview domains require explicit authorization. A public environment URL change requires rebuilding the frontend.
+
 </details>
 
 <details>
-<summary><b>4. Render Free Tier Cold Starts</b></summary>
-<br/>
-Render free web instances spin down after 15 minutes of inactivity. The first wake-up request may take ~30-50 seconds.
+<summary><b>Speech overlaps playback or a speaker switch waits</b></summary>
+
+Use headphones and the explicit interruption/speaker controls. Automatic acoustic interruption is not implemented. An already-issued provider request cannot be forcibly cancelled or refunded; its stale output is discarded, and new work may wait for that bounded call to finish. Stop and cancellation release the microphone; a new session is started manually after a disconnect, without replaying old captured audio.
+
 </details>
 
----
+The application stores no recordings or transcripts on its server. Providers receive audio/text to perform inference, and their data policies apply. Browser captions/replay are held in memory and are not durable history. Process-local limits are demo safeguards, not distributed abuse prevention. Development-only dependency advisories and other verification caveats are recorded in the [verification report](docs/PRODUCTION_VERIFICATION.md).
+
+## 📚 Documentation
+
+- [Documentation index](docs/README.md)
+- [Architecture, audio formats and turn protocol](docs/ARCHITECTURE.md)
+- [Deployment, configuration and operations](docs/DEPLOYMENT.md)
+- [Testing and verification commands](docs/TESTING.md)
+- [Recorded public acceptance and latency evidence](docs/PRODUCTION_VERIFICATION.md)
 
 ## 👤 Author
 
@@ -280,8 +275,6 @@ Render free web instances spin down after 15 minutes of inactivity. The first wa
 
 </div>
 
----
-
 ## 📄 License
 
-This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.
+Source code is licensed under [MIT](LICENSE). External API terms apply separately. The deployed demo is non-commercial; generated voice is provided by [elevenlabs.io](https://elevenlabs.io).

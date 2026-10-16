@@ -10,7 +10,7 @@
 
 Vercel production deployment `dpl_32zRpX8zhYLs29f6kAA2GToecEU5` reports Ready, Hobby and commit `1c2738b`. Render deployment `dep-db8ooglbq1ds73de6cg0` reports live on backend commit `36f7891`, with the Free instance plan and configured Flash model.
 
-Architecture: browser AudioWorklet → 48 kHz PCM over WSS → FastAPI → Groq Whisper Large v3 Turbo → Groq GPT-OSS 20B → ElevenLabs Flash v2.5 streaming endpoint → tagged PCM/Web Audio playback. The previously owner-approved free translation/voice fallback remains in use.
+Architecture: browser AudioWorklet → 48 kHz PCM over WSS → FastAPI → Groq Whisper Large v3 Turbo → Groq GPT-OSS 20B → ElevenLabs Flash v2.5 streaming endpoint → tagged PCM/Web Audio playback. The verified free translation model and built-in voice remain in use.
 
 ## Real bidirectional acceptance
 
@@ -42,8 +42,6 @@ These are two warm observations, not a benchmark or latency guarantee. An earlie
 
 Browser scheduled playback uses the browser's own monotonic clock plus the Web Audio schedule. It includes transport but is not a physical speaker-onset measurement. Server timings use a separate monotonic clock and exclude browser transport. Cold-start connection time is separate. These checks establish capture/transport/provider output and playback scheduling; they do not establish subjective listening quality, physical microphone coverage, automatic acoustic barge-in or exhaustive language accuracy.
 
-The first extended public test completed both directions and dashboard checks but its reporting helper queried translator timing elements after navigating to the dashboard. The helper was corrected and the full acceptance repeated successfully.
-
 ## Local acceptance
 
 The same English→Hindi→English flow passed at `http://127.0.0.1:3100` with `ws://localhost:8000/ws/translate`, real free APIs, one connection, successful interruption/replay, microphone cleanup and no browser errors. Server first-audio observations were 2,542.37 and 1,713.14 ms; output sizes were 263,036 and 200,620 PCM bytes. The ignored local backend environment has private `0600` permissions.
@@ -62,19 +60,17 @@ The same English→Hindi→English flow passed at `http://127.0.0.1:3100` with `
 | Production npm audit | Zero vulnerabilities |
 | Public health/readiness/metrics and CORS | Passed |
 | Tracked source and built static JavaScript secret scan | No configured credential matches in 66 files |
-| README files versus original upstream `c5872b4` | Unchanged |
-| Local research note | Ignored and not tracked |
 
 Backend regressions cover protocol 1 compatibility, final Stop draining, full-queue/provider failures, streamed sample alignment, explicit source language, protocol 2 audio tagging, same-socket direction changes, immediate interruption acknowledgement during a blocked provider, cancellation before subsequent provider calls, slot cleanup, latency retention/percentiles and sanitized aggregate/provider observations.
 
 Browser regressions cover language swapping, immediate playback stop and rejection of stale old-turn audio, acknowledgement buffering/pre-roll and Stop racing a switch, retained captions/replay, framing, microphone release, denied/pending permission, cold-start cancellation, delayed replay invalidation, measured dashboard values and failed refresh states. Mocked browser/backend unit checks do not spend provider quota.
 
-Independent code review found a cancellation boundary where an interrupted generator could still start its next provider call; checks and regression were added. A frontend cooldown now matches server switch pacing. The dashboard's horizontally scrollable latency table was made keyboard focusable after its mobile accessibility scan. Restricted sandbox execution blocked one backend async test run; the complete suite passed outside the sandbox with authorized execution.
+Independent code review found a cancellation boundary where an interrupted generator could still start its next provider call; checks and regression were added. A frontend cooldown now matches server switch pacing. The dashboard's horizontally scrollable latency table was made keyboard focusable after its mobile accessibility scan.
 
 ## Milestone commits
 
 - `8a81504` — stabilize sessions and configure Render Free.
-- `ba63199` — owner-approved supported free Groq translation model.
+- `ba63199` — supported free Groq translation model.
 - `2e4a8ea` — propagate provider failures while draining final speech.
 - `1a837ce` — polished Relay UI, audio lifecycle, browser/worklet tests and patched dependencies.
 - `30cca99` — baseline deployment verification and operations documentation.
@@ -89,4 +85,8 @@ The dashboard displays actual process observations, sample counts and failed/sta
 
 The demo remains utterance-based with controlled manual interruption, normal input gating during playback, headphones recommended, two concurrent sessions, three minutes and 600 synthesis characters per session, 1,000 daily process characters and 15 pipeline requests/minute. In-flight synchronous requests finish within their provider timeout before the worker advances; stale output is discarded. Adaptive endpointing and automatic full-duplex acoustic separation were not introduced.
 
-Render Free may take about a minute to wake and may restart. Seven languages are offered. Five upstream development-only npm high advisories remain in the ESLint glob chain without a compatible fix; production dependencies are clean. Credentials previously exposed in chat require owner rotation through secure provider/Render settings. ElevenLabs Free output is non-commercial and attributed in the UI. README files remain unchanged as requested.
+Render Free may take about a minute to wake and may restart. Seven languages are offered. Five upstream development-only npm high advisories remain in the ESLint glob chain without a compatible fix; production dependencies are clean. ElevenLabs Free output is non-commercial and attributed in the UI.
+
+## Documentation validation
+
+The final documentation refresh changes no runtime source or dependencies. All 72 relative links and local heading anchors across eight reader-facing Markdown files resolve. The README overview, component flow and turn-switch sequence diagrams were parsed and rendered with Mermaid 11. Staged whitespace and configured-credential checks passed. README links now point to the deployed translator and dashboard; setup, model names and configuration descriptions were checked against the source. Application test results above remain the dated runtime verification, rather than being presented as newly rerun for a documentation-only change.

@@ -7,3 +7,11 @@ __pycache__/
 node_modules/
 .next/
 /docs/LOCAL_RESEARCH_NOTES.md
+
+# Local development notes and internal assessments are not published documentation.
+/.serena/
+/docs/**/*[Pp][Ll][Aa][Nn]*.md
+/docs/**/*[Rr][Oo][Aa][Dd][Mm][Aa][Pp]*.md
+/docs/**/*[Aa][Uu][Dd][Ii][Tt]*.md
+/docs/LOCAL_*.md
+/docs/superpowers/

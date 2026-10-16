@@ -1,125 +1,159 @@
-# Relay deployment and operations
+# Deployment and operations
 
-The owner authorized automatic deployment on 2026-10-16. README files are intentionally unchanged.
+[Overview](../README.md) · [Architecture](ARCHITECTURE.md) · [Testing](TESTING.md) · [Recorded verification](PRODUCTION_VERIFICATION.md)
 
-## Deployed architecture
+The non-commercial demo runs on **Vercel Hobby + Render Free + Groq Free + ElevenLabs Free**. No database, paid monitoring service or keep-alive bot is required. Free-tier configuration was verified on 2026-10-16; provider availability and workspace allowances can change.
 
-Browser microphone → 20 ms, 48 kHz mono PCM over secure WebSocket → FastAPI on Render Free → Groq `whisper-large-v3-turbo` → Groq `openai/gpt-oss-20b` → ElevenLabs `eleven_flash_v2_5` streaming endpoint → streamed PCM playback and bilingual captions.
+## Public resources
 
-Translation happens per utterance, after a pause or an eight-second speech boundary. It is not simultaneous word-by-word interpretation. Audio and captions remain in browser memory; the application stores no recordings or conversations on its server. Providers process the audio/text according to their own policies.
-
-The original Llama 3.3 model returned HTTP 404 for this account; the supplied professional library voice returned HTTP 402 requiring payment. The owner explicitly approved a supported free-model/voice fallback. Groq GPT-OSS 20B and the built-in ElevenLabs Sarah voice were verified with live successful API calls. No paid account upgrade was enabled. Supported translation targets: English, Hindi, Tamil, Spanish, French, German and Japanese. Telugu is omitted because Multilingual v2 does not support its synthesis.
-
-## Production resources
-
-| Resource | Configuration |
+| Resource | Address / configuration |
 | --- | --- |
-| Frontend | https://real-time-ai-voice-translator.vercel.app |
-| Vercel project | `real-time-ai-voice-translator`, scope `akgithub2028s-projects`, Hobby |
-| Frontend root | `frontend`, Next.js preset, automatic builds from `main` |
-| Backend | https://voice-translator-backend-u725.onrender.com |
-| Live monitoring dashboard | https://real-time-ai-voice-translator.vercel.app/status |
-| Aggregate metrics | https://voice-translator-backend-u725.onrender.com/metrics |
-| Liveness | https://voice-translator-backend-u725.onrender.com/health |
-| Configuration readiness | https://voice-translator-backend-u725.onrender.com/ready |
+| Translator | [▶ Launch translator](https://real-time-ai-voice-translator.vercel.app) |
+| Live dashboard | [▶ View system status](https://real-time-ai-voice-translator.vercel.app/status) |
+| Backend | `https://voice-translator-backend-u725.onrender.com` |
+| Liveness | [GET /health](https://voice-translator-backend-u725.onrender.com/health) |
+| Configuration readiness | [GET /ready](https://voice-translator-backend-u725.onrender.com/ready) |
+| Aggregate observations | [GET /metrics](https://voice-translator-backend-u725.onrender.com/metrics) |
 | WebSocket | `wss://voice-translator-backend-u725.onrender.com/ws/translate` |
-| Render service | `voice-translator-backend`, `srv-db8nc6nf3r2c73en9dag`, Singapore, Free |
-| Backend root | `backend`, Python 3.12.12, one Uvicorn worker |
-| Build | `pip install -r requirements.txt` |
-| Start | `uvicorn src.main:app --host 0.0.0.0 --port $PORT --workers 1 --ws-max-size 16384 --ws-max-queue 16 --proxy-headers --forwarded-allow-ips '*'` |
 
-The initial Render failure came from Node commands (`npm run build`, `npm install`) configured on the Python service with no backend root. Those settings were repaired through the authenticated API and verified by successful production deployment.
+## Vercel frontend
 
-`/health` reports liveness. `/ready` verifies required variables are present; it does not spend API quota or claim the upstream providers are reachable. Missing configuration returns HTTP 503 and variable names only.
+Import the repository as a **single Next.js frontend project**, using the Hobby plan:
 
-## Environment configuration
+| Setting | Value |
+| --- | --- |
+| Project | `real-time-ai-voice-translator` |
+| Root directory | `frontend` |
+| Framework | Next.js |
+| Production branch | `main` |
+| Build | Standard Next.js build (`npm run build`) |
 
-Render server-side variables:
+Configure this public, non-secret environment variable for the appropriate deployment environments:
 
-- `GROQ_API_KEY`, `ELEVENLABS_API_KEY`: secrets stored only in the service environment and an optional ignored local backend `.env`.
-- `TTS_VOICE_ID`: a compatible built-in voice; current Sarah ID `EXAVITQu4vr4xnSDxMaL`.
-- `MT_MODEL=openai/gpt-oss-20b`.
-- `TTS_MODEL=eleven_flash_v2_5`; `eleven_multilingual_v2` remains an environment-selectable alternative.
-- `PYTHON_VERSION=3.12.12`.
-- `ALLOWED_ORIGINS`: exact production Vercel origins and local development origins, comma separated. No wildcard. Preview deployments need their exact origin added explicitly if they should access the backend.
-
-Vercel's public, non-secret variable:
-
-```env
+```dotenv
 NEXT_PUBLIC_WS_URL=wss://voice-translator-backend-u725.onrender.com/ws/translate
 ```
 
-It is configured for production, preview and development; production origin checks still apply. Public variables are embedded at build time, so changing this value requires redeployment. Keep AI keys out of Vercel frontend variables and browser code.
+It is embedded in the browser bundle at build time. Changing it requires a new build. Never put Groq/ElevenLabs keys in Vercel frontend variables. Production HTTPS requires `wss://`; a `ws://` URL will be rejected as mixed content.
 
-The local `backend/.env` was created from the configured service secrets with file mode `0600`; it is gitignored and was never staged. It uses the verified free model/voice and permits localhost development on ports 3000 and 3100. The frontend's default local connection is `ws://localhost:8000/ws/translate`.
+The dashboard uses the same backend origin to fetch health, readiness and metrics. Vercel does not host the persistent translation WebSocket server.
 
-Credentials shared in conversation must be revoked and replaced through the respective provider dashboards. Never copy keys into source, issue descriptions, logs or deployment documentation. Update Render's secret environment variables and redeploy after rotation.
+## Render backend
 
-## Free-tier safeguards and limits
+Create or maintain a Python **Web Service** on the **Free** instance plan. [`render.yaml`](../render.yaml) records the service template; secret values must be configured separately.
 
-- Two concurrent sessions; maximum 180 seconds each, including final processing.
-- Maximum 600 synthesized characters per session and 1,000 per UTC day across the running process.
-- Maximum 15 utterance pipeline requests per minute across sessions, plus six session starts per client address per 15 minutes.
-- At most two queued utterances per session, bounded packet size and input pacing. Slow networks and overloaded queues receive clear errors.
-- Provider work runs off the event loop. Disconnects cancel future provider stages, wait for the current finite-timeout call, and release capacity. A Stop flush drains accepted speech before acknowledging.
-- Provider credit failures remain server-side and return sanitized messages. Provider clients use finite timeouts; no paid fallback is used.
-- Microphone access begins after server readiness/handshake. Cancellation, failure and Stop release tracks; final audio can finish playing. Input is suppressed during playback to reduce feedback. Headphones are still recommended.
-- History is capped at 20 caption pairs in browser memory. Replay and copying text do not call providers.
+| Setting | Value |
+| --- | --- |
+| Service | `voice-translator-backend` |
+| Region | Singapore |
+| Root directory | `backend` |
+| Python version | `3.12.12` via `PYTHON_VERSION` |
+| Build | `pip install -r requirements.txt` |
+| Health-check path | `/health` |
+| Uvicorn workers | `1` |
 
-Counters are intentionally in memory: they reset on restart, sleep or redeployment. They are demo safeguards, not a durable monthly accounting system or distributed abuse prevention. Provider Free credit limits remain authoritative. Render's 750 instance hours are shared across this workspace's Free services. Cold starts can take about a minute; the frontend waits up to 90 seconds with a wake-up message. No artificial keep-alive service is configured.
+Start command for Render's managed ingress:
 
-Plans verified: Vercel deployment metadata reports Hobby; Render service reports Free; ElevenLabs subscription reports `free`, 10,000 credits and `can_extend_character_limit=false`. No paid resource, credit purchase, disk or database was added. Do not enable usage billing or attach paid upgrades. Render's included bandwidth/build allowances also apply; existing workspace billing settings are separate from the instance type and must remain capped or without a payment method for strict zero-spend operation.
-
-## Verification commands
-
-Backend (from `backend`, with requirements installed):
-
-```sh
-python -m unittest discover -s tests -v
+```bash
+uvicorn src.main:app --host 0.0.0.0 --port $PORT --workers 1 --ws-max-size 16384 --ws-max-queue 16 --proxy-headers --forwarded-allow-ips '*'
 ```
 
-Frontend (from `frontend`):
+One worker keeps the in-memory global capacity, budgets and metrics consistent for this single-instance demo. The proxy flags let Uvicorn consume client metadata from Render's managed ingress so per-visitor limits do not collapse onto a shared proxy address. Do not reuse wildcard proxy trust when exposing Uvicorn directly; trust only the known proxy in another deployment environment.
 
-```sh
-npm ci
-npm test
-npm run lint
-npx tsc --noEmit
-npm run build
-npm run start -- --hostname 127.0.0.1 --port 3100
+### Server environment
+
+| Variable | Setting |
+| --- | --- |
+| `GROQ_API_KEY` | Secret, stored in Render only and an optional ignored local `.env` |
+| `ELEVENLABS_API_KEY` | Secret, same handling |
+| `TTS_VOICE_ID` | Free-compatible built-in voice; verified Sarah ID: `EXAVITQu4vr4xnSDxMaL` |
+| `MT_MODEL` | `openai/gpt-oss-20b` |
+| `TTS_MODEL` | `eleven_flash_v2_5` |
+| `PYTHON_VERSION` | `3.12.12` |
+| `ALLOWED_ORIGINS` | Exact frontend origins, comma-separated |
+
+Example production allowlist:
+
+```dotenv
+ALLOWED_ORIGINS=https://real-time-ai-voice-translator.vercel.app,https://real-time-ai-voice-translator-akgithub2028s-projects.vercel.app
 ```
 
-In another terminal, with Google Chrome installed:
+Local origins may also be explicitly allowed for development. Preview URLs require their own exact entry; wildcard origins are not used. A configured frontend variable does not automatically authorize a preview origin on the backend.
 
-```sh
-npm run test:browser
+Optional environment overrides and defaults:
+
+```dotenv
+MAX_SESSIONS=2
+SESSION_SECONDS=180
+SESSION_CHARACTERS=600
+REQUESTS_PER_MINUTE=15
+DAILY_CHARACTERS=1000
 ```
 
-`TEST_BASE_URL` can select a different local URL. Browser tests intercept the backend and do not spend provider quota. They exercise actual microphone/worklet/Web Audio resources with Chrome's synthetic microphone. `SCREENSHOT_DIR` optionally saves desktop and mobile screenshots.
+`eleven_multilingual_v2` remains an optional `TTS_MODEL` alternative. The current seven-language menu works with the deployed Flash model. Verify model/voice availability in the account before changing either. The earlier Llama configuration and a professional library voice were unavailable on this account; the deployed free alternatives succeeded in real API tests. Adding a library voice to a collection does not guarantee Free API access.
 
-The test client emits a Starlette/httpx deprecation warning; tests still pass. Production dependency audit is clean (`npm audit --omit=dev`). The full audit retains five development-only high findings in the ESLint plugin's `fast-glob`/`micromatch`/`braces` chain; there is no available compatible patch. Do not use `npm audit fix --force`, whose proposed downgrade would break the matching Next.js lint configuration.
+Keep production credentials server-side, never in source, shell output, issues or screenshots. For rotation, replace the key in its provider dashboard, update Render's secret environment value and redeploy; update your ignored local `.env` separately. Restrict local file access, for example with `chmod 600 backend/.env` on Unix.
 
-## Current primary sources
+## Release and recovery checks
 
-- [Render Free behavior and workspace quotas](https://render.com/docs/free)
-- [Render FastAPI configuration](https://render.com/docs/deploy-fastapi)
-- [Groq free request limits](https://console.groq.com/docs/rate-limits)
-- [Groq current models](https://console.groq.com/docs/models)
-- [ElevenLabs supported models and languages](https://elevenlabs.io/docs/overview/models)
-- [ElevenLabs Free publishing and attribution requirements](https://help.elevenlabs.io/hc/en-us/articles/13313564601361-Can-I-publish-the-content-I-generate-on-the-platform)
+1. Run the checks appropriate to the changed code in [TESTING.md](TESTING.md). Confirm no secrets or private notes are staged.
+2. Push the verified revision through the repository's normal Git flow. Inspect the connected Vercel/Render deployment status and confirm the intended commit is Ready/live; a successful local build alone is insufficient.
+3. Confirm `/health` returns `{"status":"ok"}`, `/ready` returns HTTP 200, and `/metrics` returns aggregate JSON with `Cache-Control: no-store`.
+4. Open the public translator and run a short bidirectional acceptance within remaining free quotas. Confirm captions, audio, speaker switch, Stop, replay and released capacity.
+5. Check the dashboard and sanitized Render events. Configuration readiness is not proof of upstream authorization, available credits or successful synthesis.
 
-This is a non-commercial portfolio demo. The page title and footer include `elevenlabs.io` attribution. Provider offerings can change; repeat the model and voice compatibility checks before future migrations.
+If a revision fails, inspect build/runtime logs and roll back through the hosting platform to a known working deployment. Keep frontend protocol 2 and backend support aligned; backend protocol 1 compatibility permits older frontend sessions during staged rollouts. Avoid retry loops that repeatedly consume provider quota.
 
-## Conversation controls and observability
+## Health and observability
 
-Choose the source and target language before starting. During a session, **Switch speaker** swaps both languages on the same WebSocket and microphone stream. **Interrupt & speak** keeps the language direction. Both stop currently scheduled playback immediately, invalidate older turn IDs, retain 200 ms of microphone pre-roll, and buffer audio while the server acknowledges. The controls include a brief cooldown to prevent accidental repeated switches. Captions and available replay audio remain visible.
+| Signal | What it establishes |
+| --- | --- |
+| `/health` | HTTP process liveness |
+| `/ready` | Required variables are present; HTTP 503 identifies missing variable names |
+| `/metrics` | Actual process counters, recent durations, capacity and observed stage outcomes |
+| Dashboard | Visible-page checks and presentation of those real observations |
+| Render JSON events | Session/utterance direction, durations and sanitized failure metadata |
 
-This is controlled turn-taking. Normal microphone forwarding pauses during translated playback to reduce feedback; headphones are recommended. It does not perform automatic acoustic barge-in or simultaneous two-speaker separation. An already-issued synchronous provider call cannot be refunded or forcibly stopped: its old result is discarded and the next turn waits for the bounded worker. Future stages check cancellation before issuing requests.
+The dashboard polls every 15 seconds only while visible. Hidden pages pause checks; failed/stale readings are labelled. Provider state distinguishes unconfigured, unobserved, success observed and error observed; no synthetic AI health requests are made.
 
-Protocol 2 adds a turn/utterance ID to each response, including binary audio. Input includes a turn ID and browser speech-end clock solely for browser timing. Protocol 1 clients remain supported. Per-turn timing in the translator separates endpoint wait, queue, STT, translation and voice first byte from browser speech-end→scheduled playback. Connection/cold-start time is separate. Browser scheduled playback is an estimate of the Web Audio scheduling time, not a measured speaker/hardware onset.
+Metrics retain the latest 120 durations per metric and 20 sanitized provider errors. They reset on process restart, sleep or redeploy. Success rate uses completed and failed utterances, excluding empty/interrupted work. The displayed voice budget counts reserved text, even when later synthesis fails or is interrupted. It is not the provider's monthly balance.
 
-The **System status** link opens a dashboard reading `/health`, `/ready`, and `/metrics` every 15 seconds while visible. It shows capacity, completed/failed/empty/interrupted work, successful outcome rate, enforced budgets, audio bytes, uptime, sanitized recent errors, and latest/p50/p95 latency with sample counts. Providers are distinguished as configured, unobserved, success observed or error observed. Monitoring never issues synthetic AI calls. Hidden pages pause requests; stale readings and failed checks are labelled.
+Application events omit transcripts, recordings, keys and visitor addresses. Platform access logs are separate. The app stores no server-side conversations; providers process inference inputs under their own policies. Browser captions/replay remain in memory only.
 
-All metrics are process-local. There is no durable historical SLA or monthly usage ledger; the latest 120 latency samples and latest 20 sanitized provider failures are retained. Success rate excludes intentionally interrupted and empty utterances. The enforced voice-character budget measures reserved text, so a failed or interrupted synthesis can still consume that budget. Counters are reset on process restart. Session and utterance events are JSON in Render's existing log stream, with random session IDs, direction, stage durations and error category; no transcripts, audio, credentials or visitor addresses are logged by the application.
+## Operating within free tiers
 
-The managed Render ingress supplies forwarded client metadata to Uvicorn (`--proxy-headers --forwarded-allow-ips '*'`); the service is reached through Render's public ingress. Global and per-visitor request protection remains enabled. Do not reuse this wildcard proxy trust when exposing Uvicorn directly on an untrusted network.
+The demo enforces:
+
+- Two concurrent sessions and a 180-second capture/processing budget per session. Cleanup of an in-flight provider call can continue until its timeout.
+- 600 reserved synthesis characters per session and 1,000 per UTC day across the process.
+- 15 utterance pipeline starts per minute globally and six session starts per visitor address per 15 minutes.
+- Two queued utterances per session, bounded packet size, input pacing and finite provider timeouts.
+
+These process-local controls reset on restart and are not a durable monthly usage ledger or distributed abuse prevention. Provider Free quotas remain authoritative. There is no paid fallback, automatic credit purchase or usage extension enabled by application code.
+
+Render Free sleeps after inactivity and can take about a minute to wake. The frontend checks readiness before requesting the microphone, displays a wake-up state, and waits up to 90 seconds. Normal disconnect/restart recovery is an explicit new session; old microphone data is not automatically replayed. Monitoring is not an always-on uptime service and no keep-alive bot is configured.
+
+Render's included instance hours are shared across Free services in the workspace; bandwidth/build allowances also apply. A Free compute plan does not itself disable separate workspace overage billing. For strict zero-spend operation, retain capped billing settings or no payment method, monitor included allowances, and never enable paid upgrades or credit extension. ElevenLabs was verified as `free` with paid extension disabled. Vercel metadata reported `hobby`, and Render reported `free`. This demo's Free voice output is non-commercial and attributed to `elevenlabs.io` in the UI.
+
+## Troubleshooting
+
+| Symptom | Check / action |
+| --- | --- |
+| Render build tries npm commands | Root must be `backend`, runtime Python, build command pip |
+| Health works but readiness is 503 | Configure the missing server variables; no key values are returned |
+| WebSocket rejected | Exact browser origin in `ALLOWED_ORIGINS`, HTTPS→WSS, correct endpoint path |
+| Slow first connection | Allow free-service wake-up; distinguish connection timing from pipeline latency |
+| Provider 401/403 | Verify/rotate server credentials and provider permissions |
+| Provider 402/404 | Verify account access to the selected free model/voice; do not enable a paid fallback |
+| Provider 429 / demo budget reached | Wait for the relevant limit reset and inspect provider usage; avoid repeated retries |
+| No first words after a switch | Use explicit controls and headphones; inspect acknowledgement/queue timing; do not assume automatic acoustic interruption |
+| Dashboard has no samples | A new process may not have completed real speech yet; configured is distinct from observed |
+| Counters reset | Expected after sleep, restart or deployment; there is no durable metrics store |
+
+## Primary service documentation
+
+- [Render Free behavior and workspace limits](https://render.com/docs/free)
+- [Render FastAPI deployment](https://render.com/docs/deploy-fastapi)
+- [Vercel Hobby](https://vercel.com/docs/plans/hobby)
+- [Groq models](https://console.groq.com/docs/models) and [request limits](https://console.groq.com/docs/rate-limits)
+- [ElevenLabs models](https://elevenlabs.io/docs/overview/models) and [Free publishing/attribution](https://help.elevenlabs.io/hc/en-us/articles/13313564601361-Can-I-publish-the-content-I-generate-on-the-platform)
