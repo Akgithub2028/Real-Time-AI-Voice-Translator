@@ -21,4 +21,4 @@ def is_speech(pcm_frame: bytes) -> bool:
     if len(samples) == 0:
         return False
     rms = np.sqrt(np.mean(samples.astype(np.float64) ** 2))
-    return rms > VAD_SILENCE_THRESHOLD
+    return bool(rms > VAD_SILENCE_THRESHOLD)

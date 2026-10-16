@@ -6,10 +6,13 @@ text would otherwise get spoken aloud by the TTS stage downstream.
 """
 
 from groq import Groq
+from functools import lru_cache
 
-from src.config import GROQ_API_KEY, MT_MODEL
+from src.config import GROQ_API_KEY, MT_MODEL, PROVIDER_TIMEOUT
 
-_client = Groq(api_key=GROQ_API_KEY)
+@lru_cache(maxsize=1)
+def _client():
+    return Groq(api_key=GROQ_API_KEY, timeout=PROVIDER_TIMEOUT, max_retries=0)
 
 _SYSTEM_PROMPT = (
     "You are a translation engine, not a chatbot. "
@@ -32,7 +35,7 @@ def translate(text: str, target_language_name: str) -> str:
 
     system_prompt = _SYSTEM_PROMPT.format(target_lang=target_language_name)
 
-    response = _client.chat.completions.create(
+    response = _client().chat.completions.create(
         model=MT_MODEL,
         messages=[
             {"role": "system", "content": system_prompt},

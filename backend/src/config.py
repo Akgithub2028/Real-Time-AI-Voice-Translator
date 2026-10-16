@@ -5,8 +5,10 @@ model IDs, audio sample rates, and the language menu.
 """
 
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
+load_dotenv(Path(__file__).resolve().parents[1] / '.env')
 load_dotenv()
 
 # --- API Keys ---
@@ -20,7 +22,22 @@ STT_MODEL: str = "whisper-large-v3-turbo"
 MT_MODEL: str = "llama-3.3-70b-versatile"
 # ElevenLabs default multilingual voice model - handles all target languages in LANGUAGES dict.
 TTS_MODEL: str = "eleven_multilingual_v2"
-TTS_VOICE_ID: str = os.getenv("TTS_VOICE_ID", "3AMU7jXQuQa3oRvRqUmb")  # configurable ElevenLabs voice ID
+TTS_VOICE_ID: str = os.getenv("TTS_VOICE_ID", "")
+
+ALLOWED_ORIGINS = [s.strip().rstrip('/') for s in os.getenv(
+    'ALLOWED_ORIGINS', 'http://localhost:3000,http://127.0.0.1:3000'
+).split(',') if s.strip()]
+MAX_SESSIONS = int(os.getenv('MAX_SESSIONS', '2'))
+SESSION_SECONDS = int(os.getenv('SESSION_SECONDS', '180'))
+SESSION_CHARACTERS = int(os.getenv('SESSION_CHARACTERS', '600'))
+REQUESTS_PER_MINUTE = int(os.getenv('REQUESTS_PER_MINUTE', '15'))
+DAILY_CHARACTERS = int(os.getenv('DAILY_CHARACTERS', '1000'))
+PROVIDER_TIMEOUT = 20.0
+
+
+def missing_configuration() -> list[str]:
+    return [name for name, value in [('GROQ_API_KEY', GROQ_API_KEY),
+        ('ELEVENLABS_API_KEY', ELEVENLABS_API_KEY), ('TTS_VOICE_ID', TTS_VOICE_ID)] if not value]
 
 # --- Audio rate constants ---
 # Whisper API expects 16kHz mono PCM/WAV input.
@@ -63,7 +80,6 @@ LANGUAGES: dict[str, str] = {
     "English": "en",
     "Hindi": "hi",
     "Tamil": "ta",
-    "Telugu": "te",
     "Spanish": "es",
     "French": "fr",
     "German": "de",

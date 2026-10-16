@@ -5,12 +5,15 @@ avoids an MP3-decode step that would add latency before playback.
 """
 
 from collections.abc import Iterator
+from functools import lru_cache
 
 from elevenlabs.client import ElevenLabs
 
-from src.config import ELEVENLABS_API_KEY, TTS_MODEL, TTS_VOICE_ID
+from src.config import ELEVENLABS_API_KEY, TTS_MODEL, TTS_VOICE_ID, PROVIDER_TIMEOUT
 
-_client = ElevenLabs(api_key=ELEVENLABS_API_KEY)
+@lru_cache(maxsize=1)
+def _client():
+    return ElevenLabs(api_key=ELEVENLABS_API_KEY, timeout=PROVIDER_TIMEOUT)
 
 
 def synthesize_stream(text: str) -> Iterator[bytes]:
@@ -23,12 +26,23 @@ def synthesize_stream(text: str) -> Iterator[bytes]:
     if not text.strip():
         return
 
-    audio_stream = _client.text_to_speech.convert(
+    audio_stream = _client().text_to_speech.convert(
         voice_id=TTS_VOICE_ID,
         model_id=TTS_MODEL,
         text=text,
         output_format="pcm_24000",  # raw PCM, 24kHz - matches TTS_OUTPUT_RATE in config
     )
-    for chunk in audio_stream:
-        if chunk:
-            yield chunk
+    pending = b''
+    try:
+        for chunk in audio_stream:
+            pending += chunk
+            aligned = len(pending) - len(pending) % 2
+            if aligned:
+                yield pending[:aligned]
+                pending = pending[aligned:]
+        if pending:
+            raise ValueError('Incomplete audio sample from synthesis provider')
+    finally:
+        close = getattr(audio_stream, 'close', None)
+        if close:
+            close()

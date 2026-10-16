@@ -7,14 +7,17 @@ sends to Groq's whisper-large-v3-turbo for transcription.
 
 import io
 import wave
+from functools import lru_cache
 
 import numpy as np
 from scipy.signal import resample_poly
 from groq import Groq
 
-from src.config import GROQ_API_KEY, STT_MODEL, MIC_RATE, STT_INPUT_RATE
+from src.config import GROQ_API_KEY, STT_MODEL, STT_INPUT_RATE, PROVIDER_TIMEOUT
 
-_client = Groq(api_key=GROQ_API_KEY)
+@lru_cache(maxsize=1)
+def _client():
+    return Groq(api_key=GROQ_API_KEY, timeout=PROVIDER_TIMEOUT, max_retries=0)
 
 
 def _downsample_48k_to_16k(pcm_bytes: bytes) -> bytes:
@@ -54,7 +57,7 @@ def transcribe_chunk(pcm_48k: bytes) -> str:
     pcm_16k = _downsample_48k_to_16k(pcm_48k)
     wav_bytes = _pcm_to_wav_bytes(pcm_16k, STT_INPUT_RATE)
 
-    response = _client.audio.transcriptions.create(
+    response = _client().audio.transcriptions.create(
         file=("chunk.wav", wav_bytes),
         model=STT_MODEL,
         response_format="text",

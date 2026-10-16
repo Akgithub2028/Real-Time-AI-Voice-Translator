@@ -12,6 +12,7 @@ an arbitrary timer.
 """
 
 from collections.abc import Iterator
+from threading import Event
 
 from src.config import (
     MIC_RATE,
@@ -38,10 +39,9 @@ _MIN_CHUNK_BYTES = int(MIC_RATE * VAD_MIN_CHUNK_SECONDS) * _BYTES_PER_SAMPLE
 # string - a real sentence containing "thank you" plus other words won't
 # match this, so it only catches the isolated hallucination pattern.
 _WHISPER_HALLUCINATIONS = {
-    "thank you", "thank you.", "thanks", "thanks.",
     "thanks for watching", "thanks for watching!",
     "thank you for watching", "thank you for watching!",
-    "bye", "bye.", "bye bye", "you", "please subscribe",
+    "please subscribe",
 }
 
 
@@ -57,19 +57,31 @@ class TranslationPipeline:
         self._speech_buffer = bytearray()   # accumulated speech waiting to be flushed
         self._in_speech = False
         self._silence_run_ms = 0
+        self._speech_bytes = 0
+        self.cancelled = Event()
+        self.reserve_request = lambda: None
+        self.reserve_characters = lambda count: None
 
     def feed(self, pcm_48k_chunk: bytes) -> Iterator[dict]:
         """Feed raw mic audio in. Yields result dicts whenever an utterance completes."""
+        for chunk in self.feed_audio(pcm_48k_chunk):
+            yield from self._run_cycle(chunk)
+
+    def feed_audio(self, pcm_48k_chunk: bytes) -> list[bytes]:
+        """Fast VAD ingestion only; provider work is queued separately by the server."""
+        utterances = []
         self._raw_buffer.extend(pcm_48k_chunk)
 
         while len(self._raw_buffer) >= _FRAME_BYTES:
             frame = bytes(self._raw_buffer[:_FRAME_BYTES])
             del self._raw_buffer[:_FRAME_BYTES]
-            yield from self._process_frame(frame)
+            utterances.extend(self._process_frame(frame))
+        return utterances
 
     def _process_frame(self, frame: bytes) -> Iterator[dict]:
         if is_speech(frame):
             self._speech_buffer.extend(frame)
+            self._speech_bytes += len(frame)
             self._in_speech = True
             self._silence_run_ms = 0
         elif self._in_speech:
@@ -78,34 +90,50 @@ class TranslationPipeline:
             self._speech_buffer.extend(frame)
             self._silence_run_ms += VAD_FRAME_MS
             if self._silence_run_ms >= VAD_SILENCE_DURATION_MS:
-                yield from self._flush()
+                yield from self._flush_audio()
         # else: leading silence before any speech started - discard, don't buffer.
 
         # Safety cap - don't let one continuous utterance (person talking
         # without pausing) grow unbounded and stall the pipeline.
         if self._in_speech and len(self._speech_buffer) >= _MAX_CHUNK_BYTES:
-            yield from self._flush()
+            yield from self._flush_audio()
 
-    def _flush(self) -> Iterator[dict]:
+    def _flush_audio(self) -> Iterator[bytes]:
         """Send the accumulated speech buffer through STT -> MT -> TTS, then reset."""
         chunk = bytes(self._speech_buffer)
+        speech_bytes = self._speech_bytes
         self._speech_buffer = bytearray()
+        self._speech_bytes = 0
         self._in_speech = False
         self._silence_run_ms = 0
 
-        if len(chunk) < _MIN_CHUNK_BYTES:
+        if speech_bytes < _MIN_CHUNK_BYTES:
             return  # too short to be real speech (cough, click) - skip the API calls
 
-        yield from self._run_cycle(chunk)
+        yield chunk
 
     def finalize(self) -> Iterator[dict]:
         """Flush any remaining buffered speech - call this on disconnect/session end."""
+        for chunk in self.finalize_audio():
+            yield from self._run_cycle(chunk)
+
+    def finalize_audio(self) -> list[bytes]:
+        if self._in_speech and self._raw_buffer:
+            self._speech_buffer.extend(self._raw_buffer)
+        self._raw_buffer.clear()
         if self._in_speech:
-            yield from self._flush()
+            return list(self._flush_audio())
+        return []
 
     def _run_cycle(self, pcm_48k: bytes) -> Iterator[dict]:
         """Run one STT -> MT -> TTS cycle for a single detected utterance."""
+        if self.cancelled.is_set():
+            return
+        self.reserve_request()
+        yield {'type': 'status', 'stage': 'transcribing'}
         source_text = transcribe_chunk(pcm_48k)
+        if self.cancelled.is_set():
+            return
         if not source_text or source_text.strip(" .") == "":
             return  # empty or Whisper's silence-hallucination artifact
 
@@ -115,7 +143,10 @@ class TranslationPipeline:
         if normalized in _WHISPER_HALLUCINATIONS:
             return
 
+        yield {'type': 'status', 'stage': 'translating'}
         translated_text = translate(source_text, self._target_lang)
+        if self.cancelled.is_set():
+            return
         if not translated_text:
             return
 
@@ -125,6 +156,10 @@ class TranslationPipeline:
             "translated_text": translated_text,
         }
 
+        self.reserve_characters(len(translated_text))
+        yield {'type': 'status', 'stage': 'speaking'}
         for tts_chunk_24k in synthesize_stream(translated_text):
+            if self.cancelled.is_set():
+                return
             audio_48k = upsample_24k_to_48k(tts_chunk_24k)
             yield {"type": "audio", "data": audio_48k}
