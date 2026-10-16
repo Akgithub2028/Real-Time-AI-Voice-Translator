@@ -10,11 +10,20 @@ export interface Transcript {
   translated_text: string;
   language: string;
   audio: ArrayBuffer[];
+  sourceLanguage: string;
+  turnId: number;
+  utteranceId: number;
+  interrupted?: boolean;
+  timings?: Record<string, number>;
 }
 const RATE = 48000;
 const CONFIGURED_URL = process.env.NEXT_PUBLIC_WS_URL;
+type AudioFrame = { data: ArrayBuffer; at: number };
 
-export function useTranslator(language: string) {
+export function useTranslator(
+  language: string,
+  sourceLanguage: string = "English",
+) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [stage, setStage] = useState("listening");
   const [message, setMessage] = useState("");
@@ -24,6 +33,11 @@ export function useTranslator(language: string) {
   const [characterLimit, setCharacterLimit] = useState(600);
   const [elapsed, setElapsed] = useState(0);
   const [playing, setPlaying] = useState(false);
+  const [switching, setSwitching] = useState(false);
+  const [connectionMs, setConnectionMs] = useState<number | null>(null);
+  const [latestTimings, setLatestTimings] = useState<Record<string, number>>(
+    {},
+  );
   const socket = useRef<WebSocket | null>(null);
   const context = useRef<AudioContext | null>(null);
   const stream = useRef<MediaStream | null>(null);
@@ -39,6 +53,18 @@ export function useTranslator(language: string) {
   const phaseRef = useRef<Phase>("idle");
   const startedAt = useRef(0);
   const nextId = useRef(0);
+  const turn = useRef(0);
+  const direction = useRef({ source: sourceLanguage, target: language });
+  const turnPending = useRef(false);
+  const nextTurnAt = useRef(0);
+  const pendingAudio = useRef<AudioFrame[]>([]);
+  const recentAudio = useRef<AudioFrame[]>([]);
+  const lastSpeechAt = useRef(0);
+  const utterances = useRef(
+    new Map<number, { rowId?: number; speechEnd: number; received: boolean }>(),
+  );
+  const turnAck = useRef<Promise<boolean> | null>(null);
+  const resolveTurnAck = useRef<((ok: boolean) => void) | null>(null);
 
   const changePhase = useCallback((value: Phase) => {
     phaseRef.current = value;
@@ -77,6 +103,13 @@ export function useTranslator(language: string) {
   const dispose = useCallback(
     (closePlayback: boolean) => {
       generation.current++;
+      turnPending.current = false;
+      nextTurnAt.current = 0;
+      resolveTurnAck.current?.(false);
+      resolveTurnAck.current = null;
+      setSwitching(false);
+      recentAudio.current = [];
+      pendingAudio.current = [];
       clearTimers();
       abort.current?.abort();
       abort.current = null;
@@ -154,7 +187,30 @@ export function useTranslator(language: string) {
     const start = Math.max(nextPlay.current, ctx.currentTime + 0.025);
     source.start(start);
     nextPlay.current = start + buffer.duration;
+    return (start - ctx.currentTime) * 1000;
   }, []);
+
+  function sendPcm(data: ArrayBuffer, capturedAt = performance.now()) {
+    const ws = socket.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    if (ws.bufferedAmount > 192000) {
+      fail(
+        "Your connection is falling behind. Please reconnect and try again.",
+      );
+      return;
+    }
+    const values = new Int16Array(data);
+    let sum = 0;
+    for (const value of values) sum += value * value;
+    if (Math.sqrt(sum / values.length) >= 700)
+      lastSpeechAt.current = capturedAt;
+    const packet = new ArrayBuffer(data.byteLength + 12);
+    const header = new DataView(packet);
+    header.setUint32(0, turn.current);
+    header.setFloat64(4, lastSpeechAt.current);
+    new Uint8Array(packet, 12).set(new Uint8Array(data));
+    ws.send(packet);
+  }
 
   async function start() {
     if (!["idle", "error"].includes(phaseRef.current)) return;
@@ -167,6 +223,13 @@ export function useTranslator(language: string) {
     setElapsed(0);
     setStage("listening");
     currentTranscript.current = null;
+    utterances.current.clear();
+    turn.current = 0;
+    direction.current = { source: sourceLanguage, target: language };
+    lastSpeechAt.current = 0;
+    setLatestTimings({});
+    setConnectionMs(null);
+    const connectionStarted = performance.now();
     try {
       if (!navigator.mediaDevices?.getUserMedia || !window.AudioContext) {
         throw new Error(
@@ -232,28 +295,81 @@ export function useTranslator(language: string) {
       socket.current = ws;
       ws.binaryType = "arraybuffer";
       ws.onopen = () => {
-        if (current()) ws.send(JSON.stringify({ target_language: language }));
+        if (current())
+          ws.send(
+            JSON.stringify({
+              protocol: 2,
+              source_language: sourceLanguage,
+              target_language: language,
+            }),
+          );
       };
       let accepted = false;
       ws.onmessage = async (event) => {
         if (!current()) return;
         try {
           if (typeof event.data !== "string") {
-            const data = event.data as ArrayBuffer;
-            const id = currentTranscript.current;
-            if (id !== null)
+            const packet = event.data as ArrayBuffer;
+            if (packet.byteLength < 10)
+              throw new Error("The server returned incomplete audio.");
+            const header = new DataView(packet);
+            if (header.getUint32(0) !== turn.current || turnPending.current)
+              return;
+            const utteranceId = header.getUint32(4);
+            const record = utterances.current.get(utteranceId);
+            if (!record || record.rowId === undefined) return;
+            const data = packet.slice(8);
+            const received = performance.now();
+            const delay = play(data) || 0;
+            const clientTiming: Record<string, number> =
+              !record.received && record.speechEnd > 0
+                ? {
+                    browser_first_audio_ms: Math.max(
+                      0,
+                      received - record.speechEnd,
+                    ),
+                    browser_scheduled_playback_ms: Math.max(
+                      0,
+                      received + delay - record.speechEnd,
+                    ),
+                  }
+                : {};
+            record.received = true;
+            if (Object.keys(clientTiming).length)
+              setLatestTimings((previous) => ({
+                ...previous,
+                ...clientTiming,
+              }));
+            if (record.rowId !== undefined)
               setTranscripts((previous) =>
                 previous.map((t) =>
-                  t.id === id ? { ...t, audio: [...t.audio, data] } : t,
+                  t.id === record.rowId
+                    ? {
+                        ...t,
+                        audio: [...t.audio, data],
+                        timings: { ...t.timings, ...clientTiming },
+                      }
+                    : t,
                 ),
               );
-            play(data);
             return;
           }
           const msg = JSON.parse(event.data);
+          if (typeof msg.turn_id === "number" && msg.turn_id !== turn.current)
+            return;
+          if (
+            turnPending.current &&
+            !["turn_ready", "error", "info"].includes(msg.type)
+          )
+            return;
           if (msg.type === "ready" && !accepted) {
+            if (msg.protocol !== 2)
+              throw new Error(
+                "The server is updating. Please reconnect shortly.",
+              );
             accepted = true;
             clearTimers();
+            setConnectionMs(performance.now() - connectionStarted);
             setCharacterLimit(msg.character_limit || 600);
             setMessage("Allow microphone access to start your conversation.");
             const media = await navigator.mediaDevices.getUserMedia({
@@ -288,15 +404,15 @@ export function useTranslator(language: string) {
                 if (audio.data.type === "flushed") flushResolve.current?.();
                 return;
               }
-              if (ws.readyState === WebSocket.OPEN && !sources.current.size) {
-                if (ws.bufferedAmount > 192000) {
-                  fail(
-                    "Your connection is falling behind. Please reconnect and try again.",
-                  );
+              const frame = { data: audio.data, at: performance.now() };
+              recentAudio.current = [...recentAudio.current.slice(-9), frame];
+              if (turnPending.current) {
+                if (pendingAudio.current.length >= 50) {
+                  fail("The speaker switch took too long. Please reconnect.");
                   return;
                 }
-                ws.send(audio.data);
-              }
+                pendingAudio.current.push(frame);
+              } else if (!sources.current.size) sendPcm(audio.data, frame.at);
               const now = performance.now();
               if (now - lastVisual > 66) {
                 lastVisual = now;
@@ -316,16 +432,62 @@ export function useTranslator(language: string) {
             startedAt.current = Date.now();
             setMessage("");
             changePhase("listening");
+          } else if (msg.type === "turn_ready") {
+            turnPending.current = false;
+            const acknowledgedTurn = turn.current;
+            timers.current.push(
+              setTimeout(
+                () => {
+                  if (current() && acknowledgedTurn === turn.current)
+                    setSwitching(false);
+                },
+                Math.max(0, nextTurnAt.current - performance.now()),
+              ),
+            );
+            setStage("listening");
+            const buffered = pendingAudio.current;
+            pendingAudio.current = [];
+            for (const frame of buffered) sendPcm(frame.data, frame.at);
+            resolveTurnAck.current?.(true);
+            resolveTurnAck.current = null;
+            setMessage(
+              `Now listening in ${msg.source_language}. Earlier captions remain available.`,
+            );
+          } else if (msg.type === "utterance") {
+            utterances.current.set(msg.utterance_id, {
+              speechEnd: msg.speech_end_ms,
+              received: false,
+            });
+          } else if (msg.type === "metrics") {
+            const record = utterances.current.get(msg.utterance_id);
+            setLatestTimings(msg.timings);
+            if (record?.rowId !== undefined)
+              setTranscripts((previous) =>
+                previous.map((t) =>
+                  t.id === record.rowId
+                    ? { ...t, timings: { ...t.timings, ...msg.timings } }
+                    : t,
+                ),
+              );
           } else if (msg.type === "transcript") {
             const id = nextId.current++;
             currentTranscript.current = id;
+            const record = utterances.current.get(msg.utterance_id) || {
+              speechEnd: 0,
+              received: false,
+            };
+            record.rowId = id;
+            utterances.current.set(msg.utterance_id, record);
             setTranscripts((previous) => [
               ...previous.slice(-19),
               {
                 id,
                 source_text: msg.source_text,
                 translated_text: msg.translated_text,
-                language,
+                language: msg.target_language,
+                sourceLanguage: msg.source_language || "Auto-detected",
+                turnId: msg.turn_id,
+                utteranceId: msg.utterance_id,
                 audio: [],
               },
             ]);
@@ -406,6 +568,10 @@ export function useTranslator(language: string) {
       });
     }
     if (session !== generation.current) return;
+    if (turnPending.current && turnAck.current) {
+      await turnAck.current;
+      if (session !== generation.current) return;
+    }
     flushResolve.current = null;
     stopCapture();
     if (socket.current?.readyState === WebSocket.OPEN) {
@@ -423,6 +589,64 @@ export function useTranslator(language: string) {
     }
   }
 
+  function interrupt(
+    source = direction.current.source,
+    target = direction.current.target,
+  ) {
+    const ws = socket.current;
+    if (
+      phaseRef.current !== "listening" ||
+      turnPending.current ||
+      performance.now() < nextTurnAt.current ||
+      ws?.readyState !== WebSocket.OPEN
+    )
+      return false;
+    const oldTurn = turn.current;
+    const wasPlaying = sources.current.size > 0;
+    nextTurnAt.current = performance.now() + 350;
+    stopPlayback();
+    turn.current++;
+    const requestedTurn = turn.current;
+    direction.current = { source, target };
+    turnPending.current = true;
+    setSwitching(true);
+    setLatestTimings({});
+    lastSpeechAt.current = 0;
+    pendingAudio.current = recentAudio.current.slice(-10);
+    recentAudio.current = [];
+    setTranscripts((previous) =>
+      previous.map((t) =>
+        wasPlaying && t.turnId === oldTurn && t.id === currentTranscript.current
+          ? { ...t, interrupted: true }
+          : t,
+      ),
+    );
+    currentTranscript.current = null;
+    const session = generation.current;
+    turnAck.current = new Promise((resolve) => {
+      resolveTurnAck.current = resolve;
+    });
+    ws.send(
+      JSON.stringify({
+        action: "interrupt",
+        turn_id: turn.current,
+        source_language: source,
+        target_language: target,
+      }),
+    );
+    timers.current.push(
+      setTimeout(() => {
+        if (
+          session === generation.current &&
+          requestedTurn === turn.current &&
+          turnPending.current
+        )
+          fail("The speaker switch could not be confirmed. Please reconnect.");
+      }, 5000),
+    );
+    return true;
+  }
+
   async function replay(transcript: Transcript) {
     if (phaseRef.current !== "idle" && phaseRef.current !== "error") return;
     const request = ++generation.current;
@@ -435,11 +659,13 @@ export function useTranslator(language: string) {
         request !== generation.current ||
         context.current !== playbackContext ||
         !["idle", "error"].includes(phaseRef.current)
-      ) return;
+      )
+        return;
       stopPlayback();
       for (const chunk of transcript.audio) play(chunk);
     } catch {
-      if (request === generation.current) setMessage("Audio playback could not start. Please try again.");
+      if (request === generation.current)
+        setMessage("Audio playback could not start. Please try again.");
     }
   }
 
@@ -460,6 +686,10 @@ export function useTranslator(language: string) {
     characterLimit,
     elapsed,
     playing,
+    switching,
+    connectionMs,
+    latestTimings,
+    interrupt,
     start,
     stop,
     replay,

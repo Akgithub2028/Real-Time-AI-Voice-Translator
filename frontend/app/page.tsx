@@ -83,16 +83,18 @@ function Icon({ name, size = 20 }: { name: string; size?: number }) {
 
 export default function Home() {
   const [language, setLanguage] = useState("Hindi");
+  const [sourceLanguage, setSourceLanguage] = useState("English");
   const [copied, setCopied] = useState(false);
-  const t = useTranslator(language);
+  const t = useTranslator(language, sourceLanguage);
   const active = !["idle", "error"].includes(t.phase);
   const connecting = t.phase === "connecting" || t.phase === "waking";
   const busy = connecting || t.phase === "stopping";
   const time = `${Math.floor(t.elapsed / 60)
     .toString()
     .padStart(2, "0")}:${(t.elapsed % 60).toString().padStart(2, "0")}`;
-  const status =
-    t.phase === "waking"
+  const status = t.switching
+    ? "Switching speaker…"
+    : t.phase === "waking"
       ? "Waking up the demo server…"
       : t.phase === "connecting"
         ? "Connecting to your conversation…"
@@ -124,6 +126,12 @@ export default function Home() {
     }
   }
 
+  function swapLanguages() {
+    if (active && !t.interrupt(language, sourceLanguage)) return;
+    setSourceLanguage(language);
+    setLanguage(sourceLanguage);
+  }
+
   return (
     <div className="app-shell">
       <a className="skip-link" href="#translator">
@@ -146,6 +154,9 @@ export default function Home() {
           </span>
         </Link>
         <div className="header-right">
+          <Link href="/status" className="source-link">
+            System status
+          </Link>
           <span className="demo-badge">
             <span /> A voice translation demo
           </span>
@@ -194,15 +205,33 @@ export default function Home() {
               <span className="language-icon">
                 <Icon name="mic" size={19} />
               </span>
-              <div>
-                <span className="field-label">YOU SPEAK</span>
-                <strong>Auto-detect language</strong>
+              <div className="select-wrap">
+                <label className="field-label" htmlFor="source-language">
+                  YOU SPEAK
+                </label>
+                <select
+                  id="source-language"
+                  value={sourceLanguage}
+                  onChange={(e) => setSourceLanguage(e.target.value)}
+                  disabled={active}
+                >
+                  {Object.entries(LANGUAGES).map(([name, value]) => (
+                    <option key={name} value={name}>
+                      {name} · {value.native}
+                    </option>
+                  ))}
+                </select>
               </div>
-              <span className="auto-tag">Automatic</span>
             </div>
-            <span className="language-arrow">
+            <button
+              className="language-arrow"
+              aria-label="Swap languages"
+              title="Swap languages"
+              onClick={swapLanguages}
+              disabled={active}
+            >
               <Icon name="arrow" size={21} />
-            </span>
+            </button>
             <div className="language-target">
               <span className="language-icon">
                 <Icon name="globe" size={19} />
@@ -294,10 +323,31 @@ export default function Home() {
                     ? "Microphone off. Waiting for the final translation."
                     : t.phase === "listening"
                       ? t.playing
-                        ? "Listen to the translation, then speak again."
+                        ? "Interrupt to speak now, or switch to the other speaker."
                         : "Speak a sentence, then pause. Tap the square to finish."
                       : "Tap the microphone to start a conversation."}
             </p>
+            {t.phase === "listening" && (
+              <div className="turn-controls">
+                <button
+                  onClick={() => t.interrupt()}
+                  disabled={t.switching}
+                  aria-label="Interrupt and speak"
+                >
+                  Interrupt &amp; speak
+                </button>
+                <span>
+                  {sourceLanguage} → {language}
+                </span>
+                <button
+                  onClick={swapLanguages}
+                  disabled={t.switching || sourceLanguage === language}
+                  aria-label="Switch speaker"
+                >
+                  Switch speaker <span aria-hidden="true">↔</span>
+                </button>
+              </div>
+            )}
             <div className="studio-bottom">
               <span>
                 <Icon name="headphones" size={14} /> Headphones recommended
@@ -309,6 +359,43 @@ export default function Home() {
               </span>
             </div>
           </div>
+          <details className="timing-drawer">
+            <summary>
+              Turn timings{" "}
+              <span>
+                {t.latestTimings.browser_scheduled_playback_ms !== undefined
+                  ? `${(t.latestTimings.browser_scheduled_playback_ms / 1000).toFixed(2)} s to playback`
+                  : "Measurements appear after speech"}
+              </span>
+            </summary>
+            <div className="timing-grid">
+              {[
+                ["Endpoint wait", "endpoint_ms"],
+                ["Queue", "queue_ms"],
+                ["Speech recognition", "stt_ms"],
+                ["Translation", "translation_ms"],
+                ["Voice first byte", "tts_first_byte_ms"],
+                ["Browser scheduled playback", "browser_scheduled_playback_ms"],
+              ].map(([label, key]) => (
+                <div key={key}>
+                  <span>{label}</span>
+                  <strong>
+                    {t.latestTimings[key] !== undefined
+                      ? `${Math.round(t.latestTimings[key])} ms`
+                      : "—"}
+                  </strong>
+                </div>
+              ))}
+            </div>
+            <p>
+              Latest utterance. Browser playback includes transport and
+              scheduling; server stage timings use a separate clock. Connection{" "}
+              {t.connectionMs !== null
+                ? `${Math.round(t.connectionMs)} ms`
+                : "not measured"}{" "}
+              includes server wake-up.
+            </p>
+          </details>
           {t.message && (
             <div
               className={`notice ${t.phase === "error" ? "notice-error" : ""}`}
@@ -349,11 +436,11 @@ export default function Home() {
           <div className="caption-headings">
             <span>
               <span className="panel-dot source-dot" />
-              ORIGINAL <span>Auto-detected</span>
+              ORIGINAL <span>Speaker language shown per turn</span>
             </span>
             <span>
               <span className="panel-dot target-dot" />
-              TRANSLATION <span>{LANGUAGES[language].native}</span>
+              TRANSLATION <span>Translated direction shown per turn</span>
             </span>
           </div>
           <div
@@ -388,6 +475,9 @@ export default function Home() {
                   <div>
                     <span className="caption-index">
                       {String(index + 1).padStart(2, "0")}
+                      {" · "}
+                      {entry.sourceLanguage} → {entry.language}
+                      {entry.interrupted ? " · Interrupted" : ""}
                     </span>
                     <p dir="auto">{entry.source_text}</p>
                   </div>

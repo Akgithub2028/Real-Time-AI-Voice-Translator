@@ -21,14 +21,14 @@ The owner approved implementation, verification, commits, pushes and deployment.
 - [x] Add failing tests for streamed TTS, explicit recognition language, stage timing, turn switching, stale output rejection, bounded interruption, slot cleanup and private aggregate metrics.
 - [x] Extend existing pipeline and transport incrementally; preserve v1 stop/drain behavior.
 - [x] Add aggregate monitoring and structured logs; update backend environment/deployment settings.
-- [ ] Run backend suite, inspect diff, commit and push the verified milestone.
+- [x] Run backend suite, inspect diff, commit and push the verified milestone.
 
 ## Milestone 2 — two-way controls, cancellation and timing UI
 
-- [ ] Add browser regressions for language direction, immediate interruption, stale audio, retained first speech, replay and microphone release.
-- [ ] Extend the existing hook and UI for protocol 2, speaker/language controls, timing and responsive monitoring dashboard.
-- [ ] Run worklet/browser tests, lint, TypeScript, build and accessibility checks.
-- [ ] Independent review; reproduce/fix important findings, then commit/push.
+- [x] Add browser regressions for language direction, immediate interruption, stale audio, retained first speech, replay and microphone release.
+- [x] Extend the existing hook and UI for protocol 2, speaker/language controls, timing and responsive monitoring dashboard.
+- [x] Run worklet/browser tests, lint, TypeScript, build and accessibility checks.
+- [x] Independent review; reproduce/fix important findings, then commit/push.
 
 ## Milestone 3 — deployed acceptance and documentation
 
@@ -42,3 +42,5 @@ The owner approved implementation, verification, commits, pushes and deployment.
 - Owner-selected scope excludes adaptive endpointing. Preserve the fixed 600 ms boundary.
 
 - Backend verification: 27 unittest checks pass, including cancellation at provider boundaries, v1 compatibility, v2 switching, bounded interruption and private metrics. Independent review identified a provider-boundary cancellation gap; fixed and covered by regression.
+- Frontend verification: nine browser scenarios and two worklet checks pass; lint, TypeScript/build pass. Translator and status dashboard have zero axe WCAG A/AA violations at 1440 px and 390 px; no overflow at 320/390/1440 px. Independent review cooldown and completed-caption labelling findings fixed.
+- Backend milestone pushed: `36f7891`. Render Free model and managed ingress settings configured through the authenticated API.
