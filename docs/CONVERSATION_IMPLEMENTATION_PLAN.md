@@ -32,9 +32,9 @@ The owner approved implementation, verification, commits, pushes and deployment.
 
 ## Milestone 3 — deployed acceptance and documentation
 
-- [ ] Configure free provider model and proxy trust through existing CLI/API access; verify service plans remain Free/Hobby.
-- [ ] Verify deployed English→Hindi and Hindi→English, interruption without stale audio, playback/replay, health dashboard, error paths and private note exclusion.
-- [ ] Record measured evidence and limitations in separate deployment docs; leave README unchanged. Commit/push the verified documentation.
+- [x] Configure free provider model and proxy trust through existing CLI/API access; verify service plans remain Free/Hobby.
+- [x] Verify deployed English→Hindi and Hindi→English, interruption without stale audio, playback/replay, health dashboard, error paths and private note exclusion.
+- [x] Record measured evidence and limitations in separate deployment docs; leave README unchanged. Commit/push the verified documentation.
 
 ## Execution ledger
 
@@ -44,3 +44,5 @@ The owner approved implementation, verification, commits, pushes and deployment.
 - Backend verification: 27 unittest checks pass, including cancellation at provider boundaries, v1 compatibility, v2 switching, bounded interruption and private metrics. Independent review identified a provider-boundary cancellation gap; fixed and covered by regression.
 - Frontend verification: nine browser scenarios and two worklet checks pass; lint, TypeScript/build pass. Translator and status dashboard have zero axe WCAG A/AA violations at 1440 px and 390 px; no overflow at 320/390/1440 px. Independent review cooldown and completed-caption labelling findings fixed.
 - Backend milestone pushed: `36f7891`. Render Free model and managed ingress settings configured through the authenticated API.
+- Live acceptance passed locally and publicly: English→Hindi→English on one socket, playback interruption, retained captions, replay, released microphone and real provider dashboard observations. Final warm public browser speech-end→scheduled playback: 1,657/1,680 ms; small sample only, not an SLA.
+- Frontend milestone pushed: `1c2738b`; Vercel production Ready on Hobby. Render live backend `36f7891` on Free; ElevenLabs Free confirmed with paid credit extension disabled. Final evidence is in `docs/PRODUCTION_VERIFICATION.md`.
