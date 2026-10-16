@@ -1,28 +1,37 @@
-// AudioWorklet runs on a separate audio-rendering thread, not the main
-// thread - keeps mic capture from janking if the UI thread gets busy.
-// Job here: convert Web Audio's float32 samples (-1.0 to 1.0) to int16
-// PCM (-32768 to 32767), which is what the backend's config.py expects.
-
+// Mono signed little-endian PCM, emitted in 20 ms packets.
 class PcmProcessor extends AudioWorkletProcessor {
+  constructor() {
+    super();
+    this.frame = new Int16Array(Math.round(sampleRate * 0.02));
+    this.offset = 0;
+    this.active = true;
+    this.port.onmessage = ({ data }) => {
+      if (data === "flush") {
+        this.active = false;
+        if (this.offset) {
+          const tail = this.frame.slice(0, this.offset);
+          this.port.postMessage(tail.buffer, [tail.buffer]);
+          this.offset = 0;
+        }
+        this.port.postMessage({ type: "flushed" });
+      }
+    };
+  }
   process(inputs) {
-    const input = inputs[0];
-    if (input.length === 0) return true;
-
-    const channelData = input[0]; // mono - single channel only
-    const int16Buffer = new Int16Array(channelData.length);
-
-    for (let i = 0; i < channelData.length; i++) {
-      // Clamp to [-1, 1] before scaling - guards against occasional
-      // out-of-range float samples that would otherwise wrap around
-      // as int16 overflow noise.
-      const clamped = Math.max(-1, Math.min(1, channelData[i]));
-      int16Buffer[i] = clamped < 0 ? clamped * 32768 : clamped * 32767;
+    if (!this.active) return true;
+    const channel = inputs[0]?.[0];
+    if (!channel) return true;
+    for (let i = 0; i < channel.length; i++) {
+      const value = Math.max(-1, Math.min(1, channel[i]));
+      this.frame[this.offset++] = value < 0 ? value * 32768 : value * 32767;
+      if (this.offset === this.frame.length) {
+        const ready = this.frame;
+        this.port.postMessage(ready.buffer, [ready.buffer]);
+        this.frame = new Int16Array(Math.round(sampleRate * 0.02));
+        this.offset = 0;
+      }
     }
-
-    // Transfer the underlying buffer (zero-copy) to the main thread.
-    this.port.postMessage(int16Buffer.buffer, [int16Buffer.buffer]);
-    return true; // keep processor alive for next audio block
+    return true;
   }
 }
-
 registerProcessor("pcm-processor", PcmProcessor);
