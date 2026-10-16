@@ -89,6 +89,18 @@ class ServerTests(unittest.TestCase):
 
 
 class ResponsivenessTests(unittest.IsolatedAsyncioTestCase):
+    async def test_stop_surfaces_worker_failure_even_when_queue_is_full(self):
+        from src.limits import DemoLimit
+        queue = asyncio.Queue(maxsize=2)
+        queue.put_nowait(b'first')
+        queue.put_nowait(b'second')
+        async def failing_worker():
+            await asyncio.sleep(.01)
+            raise DemoLimit('Provider quota reached')
+        worker = asyncio.create_task(failing_worker())
+        with self.assertRaisesRegex(DemoLimit, 'Provider quota reached'):
+            await asyncio.wait_for(main.finish_processing(queue, worker, [b'final']), timeout=.2)
+
     async def test_slow_generator_does_not_block_event_loop(self):
         def slow_provider():
             time.sleep(.12)

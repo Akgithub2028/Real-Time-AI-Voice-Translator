@@ -56,6 +56,24 @@ async def stream_results(iterator):
         iterator.close()
 
 
+async def finish_processing(queue, worker, final_chunks):
+    """Drain accepted speech on Stop without hiding a failed provider behind a full queue."""
+    for item in [*final_chunks, None]:
+        pending = asyncio.create_task(queue.put(item))
+        try:
+            done, _ = await asyncio.wait([pending, worker], return_when=asyncio.FIRST_COMPLETED)
+            if worker in done:
+                await worker
+                return
+            await pending
+        finally:
+            if not pending.done():
+                pending.cancel()
+                with suppress(asyncio.CancelledError):
+                    await pending
+    await worker
+
+
 def public_error(exc):
     if isinstance(exc, DemoLimit):
         return str(exc)
@@ -169,9 +187,7 @@ async def translate_ws(ws: WebSocket):
                     control = json.loads(text)
                     if not isinstance(control, dict) or control.get('action') != 'stop':
                         raise ValueError('Unknown control message')
-                    enqueue(pipeline.finalize_audio())
-                    await queue.put(None)
-                    await worker
+                    await finish_processing(queue, worker, pipeline.finalize_audio())
                     await send({'type': 'stopped'})
                     await ws.close(code=1000)
                     return
