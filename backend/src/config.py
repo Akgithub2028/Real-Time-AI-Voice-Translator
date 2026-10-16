@@ -18,8 +18,8 @@ ELEVENLABS_API_KEY: str = os.getenv("ELEVENLABS_API_KEY", "")  # chosen TTS engi
 # --- Models ---
 # whisper-large-v3-turbo: fastest Groq STT model, near-large-v3 accuracy, lower latency.
 STT_MODEL: str = "whisper-large-v3-turbo"
-# llama-3.3-70b-versatile: high accuracy multilingual translation with low latency.
-MT_MODEL: str = "llama-3.3-70b-versatile"
+# Owner-approved free fallback: Llama 3.3 is no longer accessible on this account.
+MT_MODEL: str = os.getenv('MT_MODEL', 'openai/gpt-oss-20b')
 # ElevenLabs default multilingual voice model - handles all target languages in LANGUAGES dict.
 TTS_MODEL: str = "eleven_multilingual_v2"
 TTS_VOICE_ID: str = os.getenv("TTS_VOICE_ID", "")

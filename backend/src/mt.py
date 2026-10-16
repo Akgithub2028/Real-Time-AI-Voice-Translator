@@ -42,7 +42,8 @@ def translate(text: str, target_language_name: str) -> str:
             {"role": "user", "content": text},
         ],
         temperature=0,  # deterministic output - no creative variation wanted
-        max_tokens=500,
+        max_completion_tokens=1024,
+        **({'reasoning_effort': 'low', 'include_reasoning': False} if MT_MODEL.startswith('openai/gpt-oss-') else {}),
     )
     translated = response.choices[0].message.content
     return translated.strip() if translated else ""
